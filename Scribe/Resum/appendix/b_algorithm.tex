@@ -1,0 +1,44 @@
+\clearpage
+\newpage
+\section{Algorithm Pseudo-Code}
+
+In this section, we provide a detailed algorithmic description of the ReSum process in Algorithm \ref{alg:resum_rollout}.
+
+\renewcommand{\algorithmiccomment}[1]{\hfill $\triangleright$ {#1}}
+
+\begin{algorithm}[h]
+   \caption{\textbf{ReSum Rollout with Periodic Context Summarization}}
+   \label{alg:resum_rollout}
+\begin{algorithmic}[1]
+   \STATE {\bfseries Input:} Query $q$, policy model $\pi_{\theta}$, summary tool $\pi_{\text{sum}}$, tool environment $\mathcal{R}$, maximum tool calls $B$
+   \STATE {\bfseries Output:} Final answer or failure
+   
+   \STATE % 空行
+   \STATE Initialize conversation history $\mathcal{H}_0 \gets (q)$, tool call count $b \gets 0$, round $t \gets 1$
+   
+   \WHILE{$b < B$}
+      \STATE Generate reasoning and tool decision:
+      \STATE $(\tau_t, a_t) \sim \pi_{\theta}(\cdot \mid \mathcal{H}_{t-1})$ \COMMENT{\lightthink{} and \lightsearch{}}
+      
+      \IF{\lightanswer{} is detected in $a_t$}
+         \STATE \textbf{return} final answer $a_t$
+      \ELSIF{$a_t$ is a tool call}
+         \STATE $o_t \gets \mathcal{R}(a_t)$ \COMMENT{\lightresponse{}}
+         \STATE $\mathcal{H}_{t} \gets \mathcal{H}_{t-1} \circ (\tau_t, a_t, o_t)$
+         \STATE $b \gets b+1$
+      \ELSE
+         \STATE \textbf{return} failure \COMMENT{No answer or tool call detected}
+      \ENDIF
+      
+      \STATE % 空行
+      \IF{$\mathsf{Trig}(\mathcal{H}_t)$}
+         \STATE $s \sim \pi_{\text{sum}}(\cdot \mid \mathcal{H}_t)$ \COMMENT{\lightsummary{} with evidence and gaps}
+         \STATE $q' \gets (q, s)$
+         \STATE $\mathcal{H}_t \gets (q')$ \COMMENT{Reset to compressed state}
+      \ENDIF
+
+      \STATE $t \gets t+1$
+   \ENDWHILE
+   \STATE \textbf{return} failure \COMMENT{Budget exhausted}
+\end{algorithmic}
+\end{algorithm}

@@ -1,0 +1,231 @@
+\begin{thebibliography}{44}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Chae et~al.(2025)Chae, Kim, iunn Ong, Gwak, Song, Kim, Kim, Lee, and Yeo]{chae2025web}
+Chae, H., Kim, N., iunn Ong, K.~T., Gwak, M., Song, G., Kim, J., Kim, S., Lee, D., and Yeo, J.
+\newblock Web agents with world models: Learning and leveraging environment dynamics in web navigation.
+\newblock In \emph{The Thirteenth International Conference on Learning Representations}, 2025.
+\newblock URL \url{https://openreview.net/forum?id=moWiYJuSGF}.
+
+\bibitem[Christiano et~al.(2017)Christiano, Leike, Brown, Martic, Legg, and Amodei]{rlhf}
+Christiano, P.~F., Leike, J., Brown, T.~B., Martic, M., Legg, S., and Amodei, D.
+\newblock Deep reinforcement learning from human preferences.
+\newblock In Guyon, I., von Luxburg, U., Bengio, S., Wallach, H.~M., Fergus, R., Vishwanathan, S. V.~N., and Garnett, R. (eds.), \emph{Advances in Neural Information Processing Systems 30: Annual Conference on Neural Information Processing Systems 2017, December 4-9, 2017, Long Beach, CA, {USA}}, pp.\  4299--4307, 2017.
+\newblock URL \url{https://proceedings.neurips.cc/paper/2017/hash/d5e2c0adad503c91f91df240d0cd4e49-Abstract.html}.
+
+\bibitem[Dong et~al.(2025)Dong, Mao, Ma, Bao, Chen, Wang, Chen, Du, Wang, Zhang, et~al.]{dong2025arpo}
+Dong, G., Mao, H., Ma, K., Bao, L., Chen, Y., Wang, Z., Chen, Z., Du, J., Wang, H., Zhang, F., et~al.
+\newblock Agentic reinforced policy optimization.
+\newblock \emph{arXiv preprint arXiv:2507.19849}, 2025.
+
+\bibitem[Gao et~al.(2025)Gao, Fu, Xie, Xu, He, Mei, Zhu, and Wu]{gao2025asearcher}
+Gao, J., Fu, W., Xie, M., Xu, S., He, C., Mei, Z., Zhu, B., and Wu, Y.
+\newblock Beyond ten turns: Unlocking long-horizon agentic search with large-scale asynchronous rl, 2025.
+\newblock URL \url{https://arxiv.org/abs/2508.07976}.
+
+\bibitem[Gu et~al.(2024)Gu, Jiang, Shi, Tan, Zhai, Xu, Li, Shen, Ma, Liu, et~al.]{gu2024survey}
+Gu, J., Jiang, X., Shi, Z., Tan, H., Zhai, X., Xu, C., Li, W., Shen, Y., Ma, S., Liu, H., et~al.
+\newblock A survey on llm-as-a-judge.
+\newblock \emph{arXiv preprint arXiv:2411.15594}, 2024.
+
+\bibitem[Guo et~al.(2025)Guo, Yang, Zhang, Song, Zhang, Xu, Zhu, Ma, Wang, Bi, et~al.]{r1}
+Guo, D., Yang, D., Zhang, H., Song, J., Zhang, R., Xu, R., Zhu, Q., Ma, S., Wang, P., Bi, X., et~al.
+\newblock {DeepSeek-R1}: Incentivizing reasoning capability in {LLMs} via reinforcement learning.
+\newblock \emph{arXiv preprint arXiv:2501.12948}, 2025.
+
+\bibitem[Jiang et~al.(2023)Jiang, Sablayrolles, Mensch, Bamford, Chaplot, de~Las~Casas, Bressand, Lengyel, Lample, Saulnier, Lavaud, Lachaux, Stock, Scao, Lavril, Wang, Lacroix, and Sayed]{Jiang2023Mistral7}
+Jiang, A.~Q., Sablayrolles, A., Mensch, A., Bamford, C., Chaplot, D.~S., de~Las~Casas, D., Bressand, F., Lengyel, G., Lample, G., Saulnier, L., Lavaud, L.~R., Lachaux, M.-A., Stock, P., Scao, T.~L., Lavril, T., Wang, T., Lacroix, T., and Sayed, W.~E.
+\newblock Mistral 7b.
+\newblock \emph{ArXiv}, abs/2310.06825, 2023.
+
+\bibitem[Jin et~al.(2025)Jin, Zeng, Yue, Yoon, Arik, Wang, Zamani, and Han]{jin2025search}
+Jin, B., Zeng, H., Yue, Z., Yoon, J., Arik, S., Wang, D., Zamani, H., and Han, J.
+\newblock Search-r1: Training llms to reason and leverage search engines with reinforcement learning.
+\newblock \emph{arXiv preprint arXiv:2503.09516}, 2025.
+
+\bibitem[Jina.ai(2025)]{jina}
+Jina.ai.
+\newblock Jina, 2025.
+\newblock URL \url{https://jina.ai/}.
+
+\bibitem[Li et~al.(2024)Li, Dong, Chen, Su, Zhou, Ai, Ye, and Liu]{li2024llmsasjudgescomprehensivesurveyllmbased}
+Li, H., Dong, Q., Chen, J., Su, H., Zhou, Y., Ai, Q., Ye, Z., and Liu, Y.
+\newblock Llms-as-judges: A comprehensive survey on llm-based evaluation methods, 2024.
+\newblock URL \url{https://arxiv.org/abs/2412.05579}.
+
+\bibitem[Li et~al.(2025{\natexlab{a}})Li, Zhang, Yin, Zhang, Ou, Wu, Yin, Li, Tao, Wang, Shen, Zhang, Zhang, Wu, Jiang, Yan, Xie, Huang, and Zhou]{li2025websailor}
+Li, K., Zhang, Z., Yin, H., Zhang, L., Ou, L., Wu, J., Yin, W., Li, B., Tao, Z., Wang, X., Shen, W., Zhang, J., Zhang, D., Wu, X., Jiang, Y., Yan, M., Xie, P., Huang, F., and Zhou, J.
+\newblock Websailor: Navigating super-human reasoning for web agent.
+\newblock \emph{arXiv preprint arXiv:2507.02592}, 2025{\natexlab{a}}.
+
+\bibitem[Li et~al.(2025{\natexlab{b}})Li, Lin, Jiang, Cao, Liu, Zhang, Huang, Chen, Sun, Wang, Lu, Qin, Zhu, Yao, Fan, Li, Wang, Liu, Zhu, Zhu, Shi, Wang, Guan, Tang, Liu, Jiang, Yang, Liu, Zhang, and Zhou]{li2025chainofagent}
+Li, W., Lin, J., Jiang, Z., Cao, J., Liu, X., Zhang, J., Huang, Z., Chen, Q., Sun, W., Wang, Q., Lu, H., Qin, T., Zhu, C., Yao, Y., Fan, S., Li, X., Wang, T., Liu, P., Zhu, K., Zhu, H., Shi, D., Wang, P., Guan, Y., Tang, X., Liu, M., Jiang, Y.~E., Yang, J., Liu, J., Zhang, G., and Zhou, W.
+\newblock Chain-of-agents: End-to-end agent foundation models via multi-agent distillation and agentic rl, 2025{\natexlab{b}}.
+\newblock URL \url{https://arxiv.org/abs/2508.13167}.
+
+\bibitem[Li et~al.(2025{\natexlab{c}})Li, Dong, Jin, Zhang, Zhou, Zhu, Zhang, and Dou]{li2025search}
+Li, X., Dong, G., Jin, J., Zhang, Y., Zhou, Y., Zhu, Y., Zhang, P., and Dou, Z.
+\newblock Search-o1: Agentic search-enhanced large reasoning models.
+\newblock \emph{arXiv preprint arXiv:2501.05366}, 2025{\natexlab{c}}.
+
+\bibitem[Li et~al.(2025{\natexlab{d}})Li, Song, Xi, Wang, Tang, Niu, Chen, Yang, Li, Yu, Zhao, Wang, Liu, Lin, Wang, Huo, Chen, Chen, Li, Tao, Ren, Lai, Wu, Tang, Wang, Fan, Zhang, Zhang, Yan, Yang, Xu, Xu, Chen, Wang, Yang, Zhang, Xu, Chen, and Xiong]{li2025memos_long}
+Li, Z., Song, S., Xi, C., Wang, H., Tang, C., Niu, S., Chen, D., Yang, J., Li, C., Yu, Q., Zhao, J., Wang, Y., Liu, P., Lin, Z., Wang, P., Huo, J., Chen, T., Chen, K., Li, K., Tao, Z., Ren, J., Lai, H., Wu, H., Tang, B., Wang, Z., Fan, Z., Zhang, N., Zhang, L., Yan, J., Yang, M., Xu, T., Xu, W., Chen, H., Wang, H., Yang, H., Zhang, W., Xu, Z.-Q.~J., Chen, S., and Xiong, F.
+\newblock Memos: A memory os for ai system.
+\newblock \emph{arXiv preprint arXiv:2507.03724}, 2025{\natexlab{d}}.
+\newblock URL \url{https://arxiv.org/abs/2507.03724}.
+
+\bibitem[Liu et~al.(2025)Liu, Li, Zhang, Li, Chen, Ji, Cheng, Wu, Du, Xu, Song, Zhu, Chen, Zhao, and He]{liu2025webexplorer}
+Liu, J., Li, Y., Zhang, C., Li, J., Chen, A., Ji, K., Cheng, W., Wu, Z., Du, C., Xu, Q., Song, J., Zhu, Z., Chen, W., Zhao, P., and He, J.
+\newblock Webexplorer: Explore and evolve for training long-horizon web agents, 2025.
+\newblock URL \url{https://arxiv.org/abs/2509.06501}.
+
+\bibitem[Lu et~al.(2025)Lu, Hou, Wang, Zhang, Liu, Li, Feng, Tang, and Dong]{lu2025deepdiveadvancingdeepsearch}
+Lu, R., Hou, Z., Wang, Z., Zhang, H., Liu, X., Li, Y., Feng, S., Tang, J., and Dong, Y.
+\newblock Deepdive: Advancing deep search agents with knowledge graphs and multi-turn rl, 2025.
+\newblock URL \url{https://arxiv.org/abs/2509.10446}.
+
+\bibitem[Mialon et~al.(2023)Mialon, Fourrier, Wolf, LeCun, and Scialom]{mialon2023gaia}
+Mialon, G., Fourrier, C., Wolf, T., LeCun, Y., and Scialom, T.
+\newblock Gaia: a benchmark for general ai assistants.
+\newblock In \emph{The Twelfth International Conference on Learning Representations}, 2023.
+
+\bibitem[OpenAI(2025{\natexlab{a}})]{gpt-oss}
+OpenAI.
+\newblock gpt-oss-120b \& gpt-oss-20b model card, 2025{\natexlab{a}}.
+\newblock URL \url{https://cdn.openai.com/pdf/419b6906-9da6-406c-a19d-1bb078ac7637/oai_gpt-oss_model_card.pdf}.
+
+\bibitem[OpenAI(2025{\natexlab{b}})]{o3}
+OpenAI.
+\newblock Introducing openai o3 and o4-mini, 2025{\natexlab{b}}.
+\newblock URL \url{https://openai.com/index/introducing-o3-and-o4-mini/}.
+
+\bibitem[{OpenAI}(2025)]{openai_deep_research}
+{OpenAI}.
+\newblock Openai deep research.
+\newblock \url{https://openai.com/index/introducing-deep-research/}, 2025.
+
+\bibitem[Ouyang et~al.(2025)Ouyang, Yan, Hsu, Chen, Jiang, Wang, Han, Le, Daruki, Tang, Tirumalashetty, Lee, Rofouei, Lin, Han, Lee, and Pfister]{ouyang2025reasoningbank}
+Ouyang, S., Yan, J., Hsu, I.-H., Chen, Y., Jiang, K., Wang, Z., Han, R., Le, L.~T., Daruki, S., Tang, X., Tirumalashetty, V., Lee, G., Rofouei, M., Lin, H., Han, J., Lee, C.-Y., and Pfister, T.
+\newblock Reasoningbank: Scaling agent self-evolving with reasoning memory, 2025.
+\newblock URL \url{https://arxiv.org/abs/2509.25140}.
+
+\bibitem[Schulman et~al.(2017)Schulman, Wolski, Dhariwal, Radford, and Klimov]{ppo}
+Schulman, J., Wolski, F., Dhariwal, P., Radford, A., and Klimov, O.
+\newblock Proximal policy optimization algorithms.
+\newblock \emph{CoRR}, abs/1707.06347, 2017.
+
+\bibitem[Shao et~al.(2024)Shao, Wang, Zhu, Xu, Song, Bi, Zhang, Zhang, Li, Wu, et~al.]{shao2024deepseekmath}
+Shao, Z., Wang, P., Zhu, Q., Xu, R., Song, J., Bi, X., Zhang, H., Zhang, M., Li, Y., Wu, Y., et~al.
+\newblock Deepseekmath: Pushing the limits of mathematical reasoning in open language models.
+\newblock \emph{arXiv preprint arXiv:2402.03300}, 2024.
+
+\bibitem[Tan et~al.(2025)Tan, Luo, Cai, Venkat, Montgomery, Hao, Wu, Balyan, Roongta, Wang, Li, Popa, and Stoica]{rllm2025}
+Tan, S., Luo, M., Cai, C., Venkat, T., Montgomery, K., Hao, A., Wu, T., Balyan, A., Roongta, M., Wang, C., Li, L.~E., Popa, R.~A., and Stoica, I.
+\newblock rllm: A framework for post-training language agents, 2025.
+\newblock Notion Blog.
+
+\bibitem[Tao et~al.(2025)Tao, Wu, Yin, Zhang, Li, Shen, Li, Zhang, Wang, Jiang, Xie, Huang, and Zhou]{tao2025webshaper}
+Tao, Z., Wu, J., Yin, W., Zhang, J., Li, B., Shen, H., Li, K., Zhang, L., Wang, X., Jiang, Y., Xie, P., Huang, F., and Zhou, J.
+\newblock Webshaper: Agentically data synthesizing via information-seeking formalization.
+\newblock \emph{arXiv preprint arXiv:2507.15061}, 2025.
+
+\bibitem[Team et~al.(2025{\natexlab{a}})Team, Bai, Bao, Chen, Chen, Chen, Chen, Chen, Chen, Chen, Chen, Cui, Ding, Dong, Du, Du, Du, Du, Fan, Feng, Fu, Gao, Gao, Gao, and et~al]{kimiteam2025kimik2openagentic}
+Team, K., Bai, Y., Bao, Y., Chen, G., Chen, J., Chen, N., Chen, R., Chen, Y., Chen, Y., Chen, Y., Chen, Z., Cui, J., Ding, H., Dong, M., Du, A., Du, C., Du, D., Du, Y., Fan, Y., Feng, Y., Fu, K., Gao, B., Gao, H., Gao, P., and et~al.
+\newblock Kimi k2: Open agentic intelligence, 2025{\natexlab{a}}.
+\newblock URL \url{https://arxiv.org/abs/2507.20534}.
+
+\bibitem[Team et~al.(2025{\natexlab{b}})Team, Bai, Bing, Chen, Chen, Chen, Chen, Chen, Dong, et~al.]{miromind2025mirothinker}
+Team, M., Bai, S., Bing, L., Chen, C., Chen, G., Chen, Y., Chen, Z., Chen, Z., Dong, X., et~al.
+\newblock Mirothinker: Pushing the performance boundaries of open-source research agents via model, context, and interactive scaling.
+\newblock \emph{arXiv preprint arXiv:2511.11793}, 2025{\natexlab{b}}.
+
+\bibitem[Team(2025)]{qwen3technicalreport}
+Team, Q.
+\newblock Qwen3 technical report, 2025.
+\newblock URL \url{https://arxiv.org/abs/2505.09388}.
+
+\bibitem[Team et~al.(2025{\natexlab{c}})Team, Li, Zhang, Zhang, Huang, Li, Chen, Yin, Wu, Zhou, et~al.]{tongyidr}
+Team, T.~D., Li, B., Zhang, B., Zhang, D., Huang, F., Li, G., Chen, G., Yin, H., Wu, J., Zhou, J., et~al.
+\newblock Tongyi deepresearch technical report.
+\newblock \emph{arXiv preprint arXiv:2510.24701}, 2025{\natexlab{c}}.
+
+\bibitem[Wang et~al.(2024)Wang, Ma, Feng, Zhang, Yang, Zhang, Chen, Tang, Chen, Lin, et~al.]{wang2024survey}
+Wang, L., Ma, C., Feng, X., Zhang, Z., Yang, H., Zhang, J., Chen, Z., Tang, J., Chen, X., Lin, Y., et~al.
+\newblock A survey on large language model based autonomous agents.
+\newblock \emph{Frontiers of Computer Science}, 18\penalty0 (6):\penalty0 186345, 2024.
+
+\bibitem[Wei et~al.(2024)Wei, Karina, Chung, Jiao, Papay, Glaese, Schulman, and Fedus]{wei2024simpleqa}
+Wei, J., Karina, N., Chung, H.~W., Jiao, Y.~J., Papay, S., Glaese, A., Schulman, J., and Fedus, W.
+\newblock Measuring short-form factuality in large language models, 2024.
+\newblock URL \url{https://arxiv.org/abs/2411.04368}.
+
+\bibitem[Wei et~al.(2025)Wei, Sun, Papay, McKinney, Han, Fulford, Chung, Passos, Fedus, and Glaese]{bc_en}
+Wei, J., Sun, Z., Papay, S., McKinney, S., Han, J., Fulford, I., Chung, H.~W., Passos, A.~T., Fedus, W., and Glaese, A.
+\newblock Browsecomp: A simple yet challenging benchmark for browsing agents.
+\newblock \emph{arXiv preprint arXiv:2504.12516}, 2025.
+
+\bibitem[Wu et~al.(2025{\natexlab{a}})Wu, Li, Fang, Yin, Zhang, Tao, Zhang, Xi, Jiang, Xie, Huang, and Zhou]{wu2025webdancer}
+Wu, J., Li, B., Fang, R., Yin, W., Zhang, L., Tao, Z., Zhang, D., Xi, Z., Jiang, Y., Xie, P., Huang, F., and Zhou, J.
+\newblock Webdancer: Towards autonomous information seeking agency.
+\newblock \emph{arXiv preprint arXiv:2505.22648}, 2025{\natexlab{a}}.
+
+\bibitem[Wu et~al.(2025{\natexlab{b}})Wu, Yin, Jiang, Wang, Xi, Fang, Zhou, Xie, and Huang]{wu2025webwalker}
+Wu, J., Yin, W., Jiang, Y., Wang, Z., Xi, Z., Fang, R., Zhou, D., Xie, P., and Huang, F.
+\newblock Webwalker: Benchmarking llms in web traversal.
+\newblock \emph{arXiv preprint arXiv:2501.07572}, 2025{\natexlab{b}}.
+
+\bibitem[Xbench-Team(2025)]{xbench}
+Xbench-Team.
+\newblock Xbench-deepsearch, 2025.
+\newblock URL \url{https://xbench.org/agi/aisearch}.
+
+\bibitem[Xi et~al.(2025)Xi, Chen, Guo, He, Ding, Hong, Zhang, Wang, Jin, Zhou, et~al.]{xi2025rise}
+Xi, Z., Chen, W., Guo, X., He, W., Ding, Y., Hong, B., Zhang, M., Wang, J., Jin, S., Zhou, E., et~al.
+\newblock The rise and potential of large language model based agents: A survey.
+\newblock \emph{Science China Information Sciences}, 68\penalty0 (2):\penalty0 121101, 2025.
+
+\bibitem[Xu et~al.(2025)Xu, Liang, Mei, Gao, Tan, and Zhang]{xu2025mem}
+Xu, W., Liang, Z., Mei, K., Gao, H., Tan, J., and Zhang, Y.
+\newblock A-mem: Agentic memory for llm agents.
+\newblock \emph{arXiv preprint arXiv:2502.12110}, 2025.
+
+\bibitem[Yang et~al.(2024)Yang, Yang, Zhang, Hui, Zheng, Yu, Li, Liu, Huang, Wei, et~al.]{qwen2.5}
+Yang, A., Yang, B., Zhang, B., Hui, B., Zheng, B., Yu, B., Li, C., Liu, D., Huang, F., Wei, H., et~al.
+\newblock Qwen2.5 technical report.
+\newblock \emph{arXiv preprint arXiv:2412.15115}, 2024.
+
+\bibitem[Yao et~al.(2023)Yao, Zhao, Yu, Du, Shafran, Narasimhan, and Cao]{yao2023react}
+Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K., and Cao, Y.
+\newblock React: Synergizing reasoning and acting in language models.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2023.
+
+\bibitem[Yu et~al.(2025{\natexlab{a}})Yu, Chen, Feng, Chen, Dai, Yu, Zhang, Ma, Liu, Wang, et~al.]{yu2025memagent}
+Yu, H., Chen, T., Feng, J., Chen, J., Dai, W., Yu, Q., Zhang, Y.-Q., Ma, W.-Y., Liu, J., Wang, M., et~al.
+\newblock Memagent: Reshaping long-context llm with multi-conv rl-based memory agent.
+\newblock \emph{arXiv preprint arXiv:2507.02259}, 2025{\natexlab{a}}.
+
+\bibitem[Yu et~al.(2025{\natexlab{b}})Yu, Zhang, Zhu, Yuan, Zuo, Yue, Fan, Liu, Liu, Liu, et~al.]{yu2025dapo}
+Yu, Q., Zhang, Z., Zhu, R., Yuan, Y., Zuo, X., Yue, Y., Fan, T., Liu, G., Liu, L., Liu, X., et~al.
+\newblock Dapo: An open-source llm reinforcement learning system at scale.
+\newblock \emph{arXiv preprint arXiv:2503.14476}, 2025{\natexlab{b}}.
+
+\bibitem[Yuan et~al.(2025)Yuan, Lou, Li, Chen, Lu, Lin, Sun, Zhang, and Han]{yuan2025memsearcher}
+Yuan, Q., Lou, J., Li, Z., Chen, J., Lu, Y., Lin, H., Sun, L., Zhang, D., and Han, X.
+\newblock Memsearcher: Training llms to reason, search and manage memory via end-to-end reinforcement learning, 2025.
+\newblock URL \url{https://arxiv.org/abs/2511.02805}.
+
+\bibitem[Zhou et~al.(2025{\natexlab{a}})Zhou, Leon, Ying, Zhang, Shao, Ye, Chong, Jin, Xie, Cao, et~al.]{bc_zh}
+Zhou, P., Leon, B., Ying, X., Zhang, C., Shao, Y., Ye, Q., Chong, D., Jin, Z., Xie, C., Cao, M., et~al.
+\newblock Browsecomp-zh: Benchmarking web browsing ability of large language models in chinese.
+\newblock \emph{arXiv preprint arXiv:2504.19314}, 2025{\natexlab{a}}.
+
+\bibitem[Zhou et~al.(2025{\natexlab{b}})Zhou, Qu, Wu, Kim, Prakash, Rus, Zhao, Low, and Liang]{zhou2025mem1}
+Zhou, Z., Qu, A., Wu, Z., Kim, S., Prakash, A., Rus, D., Zhao, J., Low, B. K.~H., and Liang, P.~P.
+\newblock Mem1: Learning to synergize memory and reasoning for efficient long-horizon agents, 2025{\natexlab{b}}.
+\newblock URL \url{https://arxiv.org/abs/2506.15841}.
+
+\end{thebibliography}

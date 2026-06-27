@@ -1,0 +1,26 @@
+\clearpage
+\newpage
+\section{Implementation Details}\label{appendix:implementation}
+
+In this section, we elaborate on the implementation details of all inference paradigms and RL training configurations.
+
+\subsection{Implementation of Inference Paradigms}
+
+For our experimented agents, WebSailor-series, all are constrained by a context window of 32$k$ tokens. We adopt the following settings for each inference paradigm. Note that for all inference paradigms, the maximum tool calling budget is 60 for a single query, and the LLM hyper-parameters are uniformly set with a \texttt{temperature} of 0.6 and \texttt{top\_p} of 0.95.
+
+\begin{itemize}
+    \item \textbf{ReAct:} Appending every thought, action, and observation into the conversation history. At each step, we monitor the context usage and terminate as failure if the agent has reached the context window without outputting the answer.
+    \item \textbf{Recent History:} Whenever the context window has reached the limit, we truncate the conversation by only preserving the recent 22$k$ tokens of messages. This strategy allows us to restart the conversation while reserving extra space for further exploration.
+    \item \textbf{MEM1:} Unlike ReAct's append-all-history strategy, MEM1 maintains a constant context window, where the current query consists of the agent's reasoning, planning, and the tool response from the previous turn. The agent then consolidates relevant information, generates a memory, and issues a tool call, iteratively refining the context to converge on the answer. For the \textbf{training-free} setting, we directly apply MEM1 inference to the web agent with prompt modifications. Specifically, to ensure compatibility with existing agents, we replace MEM1's original special tokens, e.g., \texttt{<IS>}, \texttt{<query>}, with \lightthink{} and \lightsearch{}. Additionally, the tool response from previous action is concatenated into the querying prompt, preserving the iterative structure of MEM1.
+    \item \textbf{ReSum:} We consistently set the trigger for summarization as approaching the context limit, and then invoke ReSumTool-30B for conversation compression unless specifically stated. Such rule-based mechanism for summary triggering has the benefits of easy implementation and high efficiency by avoiding frequent summarization. 
+\end{itemize}
+
+
+
+\subsection{RL Training Configuration}\label{appendix:rl_training}
+
+We implement GRPO, MEM1-GRPO, and ReSum-GRPO for training web agents based on the \texttt{rLLM} framework~\citep{rllm2025}. For these RL algorithms, all tool invocation results $o$ are \textbf{excluded} from loss calculation to prevent bias towards tool outputs following standard multi-turn LLM agent training practices \cite{jin2025search,dong2025arpo}.
+
+\textbf{Shared Hyper-parameters:} For all RL algorithms, we consistently adopt a \texttt{batch\_size} of 64, group size $G$ of 8, \texttt{learning\_rate} of $2e-6$, and 4 epochs due to the limited 1K training samples. Such consistent parameter settings ensure a fair comparison between algorithms.
+
+\textbf{Algorithm-specific Settings:} For GRPO, the maximum number of tool calls is set to 40, with a total token limit of 32$k$, where 2$k$ tokens are allocated for the query prompt and 30$k$ for responses, including thoughts, actions, and execution results of tool calls. For ReSum-GRPO, the maximum number of tool calls is increased to 60, with 4$k$ tokens allocated for the query prompt and 28$k$ for responses. When the token limit is reached, the system invokes ReSumTool-30B to summarize the context, restart the conversation, and collect a trajectory segment from the prior process. For MEM1-GRPO, we adhere to MEM1 rollout process with trajectories optimized using the GRPO algorithm. Furthermore, we found MEM1's paradigm difficult to apply to smaller models, as they frequently produced format errors and failed to follow complex memory consolidation instructions. This incompatibility disrupted RL training, preventing meaningful adaptation. Therefore, our MEM1 evaluation is limited to the stronger WebSailor-30B model. 

@@ -1,0 +1,41 @@
+{
+   "sources" : [
+      {
+         "usage" : "toplevel",
+         "filename" : "main.tex"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "icml2026.bst"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "images/summary_case.pdf"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "images/tool_comp_percentage.pdf"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "images/websailor_30b_reward.pdf"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "images/websailor_3b_reward.pdf"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "main.bbl"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "reference.bib"
+      }
+   ],
+   "spec_version" : 1,
+   "texlive_version" : "2025",
+   "process" : {
+      "compiler" : "pdflatex"
+   }
+}
