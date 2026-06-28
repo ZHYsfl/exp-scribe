@@ -203,3 +203,88 @@ S 是可保留状态
 如果没有 S，agent 的长期状态只能靠完整历史或事后压缩；如果有 S，状态更新在每步自然发生。
 
 所以我会很明确地说：这个 agent 架构在思想上是站得住的。
+
+
+  你记得的 k 是我之前提的 hybrid memory 超参数：
+
+  历史 = S_1 S_2 ... S_{t-k-1} + A_{t-k}O_{t-k}S_{t-k} ...
+  A_{t-1}O_{t-1}S_{t-1} + current_obs
+
+  - k=0：历史只有 S 序列（最激进）
+  - k=1：最近 1 步保留 AOS，其余是 S
+  - k=2：最近 2 步保留 AOS
+  - k=∞：全部 AOS（v1 当前设计）
+
+  但注意
+
+  v1 的设计里，压缩后的远端历史会变成纯 S。所以 v1
+  本身已经有两种历史密度：
+
+  近期：A O S
+  压缩后的远期：S
+
+  我提的 k 是更细粒度的控制：
+
+  最近 k 步：A O S
+  k 步之前但还没压缩：S
+  压缩后：SSSS 或更短
+
+  对 SCRIBE 的意义
+
+  k 可以作为一个消融维度：
+
+  k=0: 纯 S 历史
+  k=1: 最近 1 步 AOS
+  k=2: 最近 2 步 AOS
+
+  看哪个 k 在你们的任务上效果最好。
+
+
+ 巧妙利用summary做了训练效率优化，上下  
+  文扩展，无痛压缩，成本降低，准确率提升 
+  ，这么多事                             
+  
+  Thought for 5s (ctrl+o to expand)
+
+● 对，这就是 SCRIBE 的核心卖点。
+   
+  一句话总结：
+     
+  ▎ SCRIBE 让 agent 每步产出的 summary 
+  ▎ 同时承担四种角色：训练信号锚点、上下
+  ▎ 文压缩器、KV cache 
+  ▎ 优化器、状态传递载体。
+
+  ---
+  四个价值点
+
+  ┌──────────────┬───────────────────┐
+  │     角色     │    解决的问题     │
+  ├──────────────┼───────────────────┤
+  │ 训练信号锚点 │ token-level       │
+  │              │ credit assignment │
+  ├──────────────┼───────────────────┤
+  │ 上下文压缩器 │ 长 horizon 任务的 │
+  │              │  context 爆炸     │
+  ├──────────────┼───────────────────┤
+  │ KV cache     │ append-only       │
+  │ 优化器       │ 历史复用          │
+  ├──────────────┼───────────────────┤
+  │ 状态传递载体 │ 跨 step           │
+  │              │ 的干净状态表示    │
+  └──────────────┴───────────────────┘
+
+  ---
+  一个更锐利的 paper pitch
+
+  ▎ "We show that a single design choice 
+  ▎ — forcing the agent to write a 
+  ▎ token-grounded, append-only step 
+  ▎ summary — simultaneously improves 
+  ▎ credit assignment, context 
+  ▎ efficiency, KV cache reuse, and 
+  ▎ long-horizon reasoning. SCRIBE turns 
+  ▎ the state representation problem into
+  ▎ a data format problem."
+
+  这句话可以直接放 abstract。

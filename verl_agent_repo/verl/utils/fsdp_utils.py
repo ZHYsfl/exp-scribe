@@ -109,10 +109,13 @@ def get_fsdp_wrap_policy(module, config=None, is_lora=False):
         transformer_cls_to_wrap = set()
         for layer_class in fsdp_transformer_layer_cls_to_wrap:
             transformer_cls = get_module_class_from_name(module, layer_class)
-            if transformer_cls is None:
-                raise Exception("Could not find the transformer layer class to wrap in the model.")
-            else:
+            if transformer_cls is not None:
                 transformer_cls_to_wrap.add(transformer_cls)
+        # Unified VL configs (e.g. Qwen3.5) list both vision and text block
+        # names in `_no_split_modules`; when the model is loaded text-only the
+        # vision block class is absent.  Only fail if *nothing* matched.
+        if not transformer_cls_to_wrap:
+            raise Exception("Could not find the transformer layer class to wrap in the model.")
 
         transformer_policy = functools.partial(
             transformer_auto_wrap_policy,
@@ -141,7 +144,7 @@ def offload_fsdp_model_to_cpu(model: FSDP, empty_cache: bool = True):
             continue
         flat_param = handle.flat_param
         assert flat_param.data.data_ptr() == flat_param._local_shard.data_ptr() and id(flat_param.data) != id(flat_param._local_shard) and flat_param.data.size() == flat_param._local_shard.size()
-        handle.flat_param_to(torch.device("cpu"), non_blocking=True)
+        handle.flat_param_to(torch.device("cpu"), non_blocking=False)
         # the following still keeps id(._local_shard) != id(.data)
         flat_param._local_shard = flat_param.data
         assert id(flat_param._local_shard) != id(flat_param.data)
@@ -152,7 +155,7 @@ def offload_fsdp_model_to_cpu(model: FSDP, empty_cache: bool = True):
 @torch.no_grad()
 def offload_fsdp2_model_to_cpu(model, empty_cache: bool = True):
     for param in model.parameters():
-        param.data = param.data.to(torch.device("cpu"), non_blocking=True)
+        param.data = param.data.to(torch.device("cpu"), non_blocking=False)
     if empty_cache:
         get_torch_device().empty_cache()
 
@@ -172,7 +175,7 @@ def load_fsdp_model_to_gpu(model: FSDP):
         if handle._offload_params:
             continue
         flat_param = handle.flat_param
-        handle.flat_param_to(torch.device(f"{get_device_name()}:{device_id}"), non_blocking=True)
+        handle.flat_param_to(torch.device(f"{get_device_name()}:{device_id}"), non_blocking=False)
         # the following still keeps id(._local_shard) != id(.data)
         flat_param._local_shard = flat_param.data
 
@@ -181,7 +184,7 @@ def load_fsdp_model_to_gpu(model: FSDP):
 def load_fsdp2_model_to_gpu(model):
     device = torch.cuda.current_device()
     for param in model.parameters():
-        param.data = param.data.to(device, non_blocking=True)
+        param.data = param.data.to(device, non_blocking=False)
 
 
 @torch.no_grad()
@@ -193,7 +196,7 @@ def offload_fsdp_optimizer(optimizer):
             state = optimizer.state[param]
             for key, value in state.items():
                 if isinstance(value, torch.Tensor):
-                    state[key] = value.to("cpu", non_blocking=True)
+                    state[key] = value.to("cpu", non_blocking=False)
 
 
 @torch.no_grad()
@@ -205,7 +208,7 @@ def load_fsdp_optimizer(optimizer, device_id):
             state = optimizer.state[param]
             for key, value in state.items():
                 if isinstance(value, torch.Tensor):
-                    state[key] = value.to(device_id, non_blocking=True)
+                    state[key] = value.to(device_id, non_blocking=False)
 
 
 @contextmanager
@@ -404,7 +407,7 @@ def fsdp2_load_full_state_dict(model: torch.nn.Module, full_state: dict, device_
 
     # To broadcast, it needs to be instantiated in the GPU.
     if dist.get_rank() == 0:
-        model = model.to(device=torch.cuda.current_device(), non_blocking=True)
+        model = model.to(device=torch.cuda.current_device(), non_blocking=False)
     else:
         model = model.to_empty(device=torch.cuda.current_device())
 
@@ -417,7 +420,7 @@ def fsdp2_load_full_state_dict(model: torch.nn.Module, full_state: dict, device_
         dist.broadcast(buf, src=0)
 
     if cpu_offload:
-        model.to("cpu", non_blocking=True)
+        model.to("cpu", non_blocking=False)
         for buf in model.buffers():
             buf.data = buf.data.to(torch.cuda.current_device())
 
@@ -455,7 +458,7 @@ def fsdp2_clip_grad_norm_(parameters, max_norm, norm_type=2.0, error_if_nonfinit
         parameters = list(parameters)
     grads = [p.grad for p in parameters if p.grad is not None]
     total_norm = _get_total_norm(grads, norm_type, error_if_nonfinite, foreach)
-    total_norm = total_norm.to(torch.cuda.current_device(), non_blocking=True)
+    total_norm = total_norm.to(torch.cuda.current_device(), non_blocking=False)
     _clip_grads_with_norm_(parameters, max_norm, total_norm, foreach)
     return total_norm
 

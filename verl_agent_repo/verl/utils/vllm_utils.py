@@ -207,10 +207,7 @@ class VLLMHijack():
                         peft_helper=peft_helper,
                         device="cpu",
                         dtype=self.lora_config.lora_dtype,
-                        embeddings=None,
-                        target_embedding_padding=self.vocab_size + self.lora_config.lora_extra_vocab_size,
-                        embedding_modules=self.embedding_modules,
-                        embedding_padding_modules=self.embedding_padding_modules,
+                        model_vocab_size=self.vocab_size,
                         weights_mapper=hf_to_vllm_mapper
                     )
                 else:
@@ -221,18 +218,20 @@ class VLLMHijack():
                         lora_model_id=lora_request.lora_int_id,
                         device="cpu",
                         dtype=self.lora_config.lora_dtype,
-                        target_embedding_padding=self.vocab_size +
-                        self.lora_config.lora_extra_vocab_size,
-                        embedding_modules=self.embedding_modules,
-                        embedding_padding_modules=self.embedding_padding_modules,
+                        model_vocab_size=self.vocab_size,
                         weights_mapper=hf_to_vllm_mapper)
             except Exception as e:
                 raise e
 
-            if lora.extra_vocab_size > self.lora_config.lora_extra_vocab_size:
+            # vLLM >= 0.23 dropped LoRA extra-vocab support (LoRAConfig no longer
+            # has lora_extra_vocab_size and from_*_tensors/checkpoint take
+            # model_vocab_size instead of target_embedding_padding).  Guard the
+            # legacy check so it's a no-op when neither side carries extra vocab.
+            lora_extra = getattr(self.lora_config, "lora_extra_vocab_size", 0)
+            if getattr(lora, "extra_vocab_size", 0) > lora_extra:
                 raise ValueError(f"LoRA added vocab size {lora.extra_vocab_size} "
                                 f"is greater than lora_extra_vocab_size "
-                                f"{self.lora_config.lora_extra_vocab_size}.")
+                                f"{lora_extra}.")
             return lora
 
         def do_hijack(target_cls, target_method_name, hooking_method):
