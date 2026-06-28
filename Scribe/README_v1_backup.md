@@ -288,3 +288,11 @@ S 是可保留状态
   ▎ a data format problem."
 
   这句话可以直接放 abstract。
+
+每个loop设置max_steps,所以一个loop可以有10个可以训练的RL信号项，
+每个信号项的reward是iter的reward的考虑折扣因子的和/len，以及summary的一些质量指标以及一些格式指标等，你注意指标越多越容易防止reward hacking。
+
+包括设置了压缩条件，那一旦满足，下次的iter x迭代后，那其实iter0 - iter x这个信号项的轨迹就是S S S S R A O R S.你懂吧。
+
+无论如何训练的时候一定loop就是硬性到max_step。
+
