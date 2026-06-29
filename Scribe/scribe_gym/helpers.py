@@ -14,8 +14,7 @@ def _tool_call_id(tool_call: Any) -> str:
     return getattr(tool_call, "id", "")
 
 
-def observation_to_tool_messages(
-    observation: str,
+def build_tool_messages(
     tool_calls: List[Any],
     info: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
@@ -47,8 +46,8 @@ def extract_tool_calls(blocks: List[ScribeBlock]) -> List[Dict[str, Any]]:
 
 
 __all__ = [
+    "build_tool_messages",
     "extract_tool_calls",
     "message_to_scribe_blocks",
-    "observation_to_tool_messages",
     "tool_calls_to_action",
 ]

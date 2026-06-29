@@ -1,8 +1,8 @@
 from .base_env import ScribeEnv, ThreadPoolScribeMultiEnv
 from .helpers import (
+    build_tool_messages,
     extract_tool_calls,
     message_to_scribe_blocks,
-    observation_to_tool_messages,
     tool_calls_to_action,
 )
 from .openai_bridge import GymBackedAgent
@@ -25,9 +25,9 @@ __all__ = [
     "ScribeRunner",
     "ThreadPoolScribeMultiEnv",
     "ToolCallingScribeEnv",
+    "build_tool_messages",
     "extract_tool_calls",
     "message_to_scribe_blocks",
-    "observation_to_tool_messages",
     "parse_scribe_blocks",
     "render_scribe_blocks",
     "tool_calls_to_action",
