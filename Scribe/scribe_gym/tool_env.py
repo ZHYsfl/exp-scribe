@@ -111,7 +111,8 @@ class LinuxWorkspaceEnv(ToolCallingScribeEnv):
     ) -> Tuple[str, float, bool, bool, Dict[str, Any]]:
         if self._answer is None:
             return (
-                "[STOP] No executable tool calls were produced; episode terminated.",
+                "[STOP] No tool call was produced. Please use the available tools to "
+                "solve the task, and call the submit tool when you have the final answer.",
                 0.0,
                 True,
                 False,
