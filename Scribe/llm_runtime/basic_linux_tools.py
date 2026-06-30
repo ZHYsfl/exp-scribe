@@ -41,10 +41,20 @@ def create_basic_linux_tools(workspace_root: str | Path = ".") -> list[Tool]:
         except subprocess.TimeoutExpired:
             return truncate(f"The command timed out after {timeout} seconds.")
 
+        # Return stdout/stderr VERBATIM. Do not strip or normalize newlines —
+        # the model relies on the exact command output (e.g. `ls` line breaks,
+        # trailing blank lines) to reason about results. We only guarantee a
+        # separator between sections: if stdout doesn't already end with a
+        # newline (e.g. `printf` without \n), add one so the `stderr:` label
+        # never glues onto the output.
+        stdout_text = result.stdout or "(empty)"
+        stderr_text = result.stderr or "(empty)"
+        if stdout_text and not stdout_text.endswith("\n"):
+            stdout_text += "\n"
         return truncate(
             f"exit_code: {result.returncode}\n"
-            f"stdout:\n{result.stdout or '(empty)'}\n"
-            f"stderr:\n{result.stderr or '(empty)'}"
+            f"stdout:\n{stdout_text}"
+            f"stderr:\n{stderr_text}"
         )
 
     def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> str:

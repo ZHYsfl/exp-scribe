@@ -57,13 +57,20 @@ class ScribeRunner:
         self._best_reward = float("-inf")
         return self._build_initial_observations(obs)
 
-    def _build_system_prompt(self) -> str:
-        tools = self.agent._get_tools()
-        if self.system_prompt is not None:
-            messages = [{"role": "system", "content": self.system_prompt}]
+    def _build_system_prompt(self, task_description: Optional[str] = None) -> str:
+        # Tools are NOT baked into the system content here. The server injects
+        # the tool definitions into the prompt itself from the `tools=` API
+        # field (verified against a local vllm server: the chat template renders
+        # tools into the system block on its own). Baking them here too would
+        # duplicate the <tools> block in the prompt the model actually sees.
+        content = self.system_prompt or ""
+        if task_description:
+            content = f"{content}\n\n# Task\n{task_description}".strip()
+        if content:
+            messages = [{"role": "system", "content": content}]
         else:
             messages = [{"role": "user", "content": ""}]
-        rendered = render_messages(messages, tools=tools, add_generation_prompt=False)
+        rendered = render_messages(messages, tools=[], add_generation_prompt=False)
         start = rendered.find("<|im_start|>system\n")
         if start == -1:
             return ""
@@ -75,10 +82,13 @@ class ScribeRunner:
 
     def _build_initial_observations(self, task_description: str) -> List[Dict[str, Any]]:
         messages: List[Dict[str, Any]] = []
-        system_content = self._build_system_prompt()
+        system_content = self._build_system_prompt(task_description)
         if system_content:
             messages.append({"role": "system", "content": system_content})
-        messages.append({"role": "user", "content": task_description})
+        # The task description is merged into the system prompt; the first user
+        # message is a fixed kickoff. All later user messages are the feedback
+        # produced by _evaluate_turn.
+        messages.append({"role": "user", "content": "Please start solving the problem."})
         return messages
 
     def _evaluate_turn(self, step: Dict[str, Any]) -> Optional[TurnResult]:
