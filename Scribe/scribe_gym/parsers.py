@@ -8,7 +8,7 @@ _SCRIBE_TAG_TYPES = {
     "tool_call": ScribeBlockType.TOOL_CALL,
     "tool_response": ScribeBlockType.TOOL_RESPONSE,
     "reflect": ScribeBlockType.REFLECT,
-    "step_summary": ScribeBlockType.STEP_SUMMARY,
+    "turn_summary": ScribeBlockType.TURN_SUMMARY,
 }
 
 def render_scribe_blocks(blocks: List[ScribeBlock]) -> str:
@@ -50,7 +50,7 @@ def _find_next_valid_pair(
         if block_type in (
             ScribeBlockType.THINK,
             ScribeBlockType.REFLECT,
-            ScribeBlockType.STEP_SUMMARY,
+            ScribeBlockType.TURN_SUMMARY,
             ScribeBlockType.TOOL_RESPONSE,
         ) and _contains_known_tag(content):
             saw_malformed = True

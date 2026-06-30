@@ -9,7 +9,7 @@ class ScribeBlockType(Enum):
     TOOL_CALL = auto()
     TOOL_RESPONSE = auto()
     REFLECT = auto()
-    STEP_SUMMARY = auto()
+    TURN_SUMMARY = auto()
 
 @dataclass
 class ScribeBlock:
