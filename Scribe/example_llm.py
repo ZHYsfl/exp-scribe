@@ -34,12 +34,24 @@ from Scribe.scribe_gym.chat_template import render_messages  # noqa: E402
 
 # Base system prompt. The task description is appended to it by ScribeRunner.
 SYSTEM_PROMPT = (
-    "You are a tool-using assistant. Work as follows:\n"
+    "You are a tool-using assistant. You solve tasks across one or more TURNS.\n"
+    "\n"
+    "What a TURN is: one solving attempt that starts from a kickoff message and "
+    "ends when you produce a non-tool message (plain text) after calling submit. "
+    "Within a single turn you may call tools multiple times, but you must call "
+    "submit AT MOST ONCE, and only after you have gathered and verified the "
+    "evidence you need. After submit, finish the turn with a short summary.\n"
+    "\n"
+    "Work as follows:\n"
     "1. Solve the problem step by step using the provided linux tools "
     "(bash/read_file/write_file/list_dir, etc.).\n"
     "2. Think about what to do at each step, then call a tool.\n"
-    "3. Once you have the result, call the submit tool with the final answer; "
-    "after submitting, finish with a short natural-language summary.\n"
+    "3. Verify the answer with tools before submitting.\n"
+    "4. Call submit EXACTLY ONCE per turn with the final answer. Repeated "
+    "submit calls in the same turn are penalized (each extra submit reduces "
+    "your reward). Do not submit before verification.\n"
+    "If a turn ends without reaching the reward threshold, you will receive "
+    "feedback and start a new turn; the submit counter resets each turn.\n"
     "Note: always provide valid JSON arguments for tool calls."
 )
 

@@ -86,12 +86,21 @@ class ScribeRunner:
         if system_content:
             messages.append({"role": "system", "content": system_content})
         # The task description is merged into the system prompt; the first user
-        # message is a fixed kickoff. All later user messages are the feedback
+        # message is the turn kickoff. We deliberately do NOT reveal the turn
+        # number or max_turns: horizon awareness biases the model's behavior
+        # (e.g. gambling when it thinks few turns remain) and contaminates the
+        # training distribution. All later user messages are the feedback
         # produced by _evaluate_turn.
-        messages.append({"role": "user", "content": "Please start solving the problem."})
+        kickoff = (
+            "Please start solving the problem. Work within this turn: use tools, "
+            "then call submit exactly once with your final answer."
+        )
+        messages.append({"role": "user", "content": kickoff})
         return messages
 
-    def _evaluate_turn(self, step: Dict[str, Any]) -> Optional[TurnResult]:
+    def _evaluate_turn(
+        self, step: Dict[str, Any]
+    ) -> Optional[TurnResult]:
         if not self._is_turn_done(step):
             return None
 
@@ -117,48 +126,61 @@ class ScribeRunner:
         return self.done_mode == "threshold" and step["reward"] >= self.reward_threshold
 
     def _build_feedback(
-        self, step: Dict[str, Any], is_new_best: bool
+        self,
+        step: Dict[str, Any],
+        is_new_best: bool,
     ) -> Optional[str]:
+        # NOTE: feedback must NOT reveal the turn number or max_turns. Horizon
+        # awareness biases the model (gambling when it thinks few turns remain)
+        # and contaminates the RL training distribution. Keep feedback to
+        # reward/best/threshold + the per-turn submit rule only.
         reward = step["reward"]
         answer = step["info"].get("answer")
         best = self._best_reward
 
+        submit_note = (
+            " Repeated submits in the same turn are penalized — verify with "
+            "tools first, then submit once."
+        )
+
         if step["truncated"]:
             return (
-                f"Reached the step limit. Current reward: {reward}. "
-                f"Please improve in the next turn."
+                f"Reached the step limit. Current reward: {reward}. Improve in "
+                f"the next turn. Remember: a turn is one solving attempt from "
+                f"kickoff to your final submit; call submit at most once per turn."
             )
 
         if answer is None:
             return (
-                "No submit tool call was produced. Please use the available tools to "
-                "solve the task, and call the submit tool when you have the final answer."
+                "No submit tool call was produced this turn. Use the available "
+                "tools to solve the task, then call submit exactly once with the "
+                "final answer."
             )
 
         if self.done_mode == "threshold":
             if is_new_best:
                 return (
-                    f"Reach new best reward: {reward}. The threshold is "
-                    f"{self.reward_threshold}. Keep improving."
+                    f"New best reward: {reward}. Threshold is "
+                    f"{self.reward_threshold}. Keep improving.{submit_note}"
                 )
             return (
-                f"Reward: {reward}, best so far: {best}. The threshold is "
-                f"{self.reward_threshold}. Try to reach it."
+                f"Reward: {reward}, best so far: {best}. Threshold is "
+                f"{self.reward_threshold}. Try to reach it.{submit_note}"
             )
 
         if reward >= self.reward_threshold:
             return (
-                f"Reward {reward} has reached the threshold (best so far: {best}). "
-                f"Continue optimizing for an even better answer."
+                f"Reward {reward} reached the threshold (best: {best}). "
+                f"Continue optimizing.{submit_note}"
             )
         if is_new_best:
             return (
-                f"New best reward: {reward} (threshold: {self.reward_threshold}). "
-                f"Keep optimizing."
+                f"New best reward: {reward} (threshold: "
+                f"{self.reward_threshold}). Keep optimizing.{submit_note}"
             )
         return (
             f"Reward: {reward}, best so far: {best} (threshold: "
-            f"{self.reward_threshold}). Keep optimizing."
+            f"{self.reward_threshold}). Keep optimizing.{submit_note}"
         )
 
     def _reset_env_step_count(self) -> None:

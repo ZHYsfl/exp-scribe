@@ -26,13 +26,20 @@ class LinuxWorkspaceEnv(ToolCallingScribeEnv):
         workspace_root: str | Path = ".",
         max_steps: int = 32,
         right_answer: Optional[str] = None,
+        submit_penalty: float = 0.5,
     ):
         self.task_description = task_description
         self.workspace_root = Path(workspace_root).resolve()
         self.max_steps = max_steps
         self.right_answer = right_answer
+        # Reward shaping: penalize calling submit more than once within a single
+        # turn. The agent should gather tool evidence, then submit exactly once.
+        # Set submit_penalty=0.0 to disable. Each extra submit beyond the first
+        # subtracts `submit_penalty` from the final reward (clamped to >= 0).
+        self.submit_penalty = submit_penalty
         self._step_count = 0
         self._submitted = False
+        self._submit_count = 0
         self._answer: str | None = None
 
         tools = create_basic_linux_tools(self.workspace_root)
@@ -64,6 +71,14 @@ class LinuxWorkspaceEnv(ToolCallingScribeEnv):
     def _submit(self, answer: str) -> str:
         self._submitted = True
         self._answer = answer
+        self._submit_count += 1
+        if self._submit_count > 1:
+            return (
+                f"Submitted final answer: {answer}\n"
+                f"[WARNING] submit has been called {self._submit_count} times in "
+                f"this turn. Repeated submits are penalized. Call submit only "
+                f"once with your final answer."
+            )
         return f"Submitted final answer: {answer}"
 
     def get_task_description(self) -> str:
@@ -76,6 +91,7 @@ class LinuxWorkspaceEnv(ToolCallingScribeEnv):
     ) -> Tuple[str, Dict[str, Any]]:
         self._step_count = 0
         self._submitted = False
+        self._submit_count = 0
         self._answer = None
         obs = self.task_description
         info = {
@@ -87,7 +103,11 @@ class LinuxWorkspaceEnv(ToolCallingScribeEnv):
         return obs, info
 
     def reset_step_count(self) -> None:
+        # Called by ScribeRunner at each turn boundary: reset the per-turn
+        # step counter AND the per-turn submit counter, so repeated-submit
+        # penalty is scoped to a single turn.
         self._step_count = 0
+        self._submit_count = 0
 
     async def astep(
         self, action: Any
@@ -102,8 +122,15 @@ class LinuxWorkspaceEnv(ToolCallingScribeEnv):
 
     def _compute_answer_reward(self) -> float:
         if self.right_answer is None:
-            return 1.0
-        return 1.0 if self._answer.strip() == self.right_answer.strip() else 0.0
+            base = 1.0
+        else:
+            base = 1.0 if self._answer.strip() == self.right_answer.strip() else 0.0
+        # Penalize repeated submits within the same turn: each extra submit
+        # beyond the first subtracts `submit_penalty`, clamped to >= 0.
+        extra_submits = max(0, self._submit_count - 1)
+        if extra_submits and self.submit_penalty > 0.0:
+            base = max(0.0, base - extra_submits * self.submit_penalty)
+        return base
 
     def _handle_non_tool_action(
         self,
