@@ -4,229 +4,346 @@ A new design paradigm and infra to LLM-agent training for Loop Engineering.
 
 SCRIBE extends the classic ReAct loop with explicit `Reflect` and `Summarize` phases.
 
-One trajectory is a loop,with many turns,and each turn with many steps.
+One trajectory is a loop,with many turns,and each turn with many steps.**We don't need to worry about the number of steps will "burst" in a turn,because we have the sft data to warm up the model,and in rl phase its exploration space will not be too large to make the steps loop crazily in one turn.
 
 Our infra now can collect the rollout data,in threshold mode we can stop once the result of a turn exceeds the pass threshold.Each turn we have a reward,and a trajectory reward is associated with the reward of all turns.
 
 ## First ：the context engineering of each turn:
 
-Every LLM response follows this strict tag order. For convenience,we use T to stand for the think block,A to stand for the tool_call block,O to stand for the output block,R to stand for the reflect block,S to stand for the turn_summary block and AR to stand for the tool_response block.A step's rollout usually is a
-list[T/O/(list[A]+list[AR])]+R+S  structure.
-each step stores its rollout blocks and its reward(most of the step is 0,only the step after the last submit step gets the real reward).
+Every LLM response follows this strict tag order. For convenience,we use T to stand for the think block,A to stand for the tool_call block,O to stand for the output block,R to stand for the reflect block,S to stand for the turn_summary block and AR to stand for the tool_response block.A turn's rollout usually is a
+list[T/O/(list[A]+list[AR])]+R+S  structure.(**Note!in list[T/O/(list[A]+list[AR])] the actual rollout's input is always excluding T&R block because they are disposible!there we use list[T/O/(list[A]+list[AR])] because we show all the rollout blocks this turn generated and these infos are important when training.**)A step is a llm call.(actually,only tool call make next step **in a turn**.)
+Each turn stores its input messages(list[Dict]),its new and rollout blocks(list[ScribeBlocks]) and its reward(int,the reward of a turn is equal to the reward of the last step in this turn.The reward of most steps in this turn are 0,the reward of a step is real when this step has no tool calls and the last step for this step is just right call the submit tool,so this step can judge the answer to give the metric 1.).
 
 History Compression rule:
 
-1.Disposable T&R blocks: The T and R blocks are both disposable,next rollout(next step) they will disappear in input blocks.
-2.The steps before the recent k(default k=3) steps only preserve the S block.
-3.the whole input blocks' tokens nears limit:Compression is triggered automatically **before rollout**. Two sets must be kept distinct:
+1.Disposable T&R blocks: The T and R blocks are both disposable,next rollout(next step,note:next step!not next turn but step!that means once T&R blocks are generated,next llm call the input blocks have already not included T&R blocks.) they will disappear in input blocks.
+
+2.The turns before the recent k(default k=3) turns only preserve the S block.
+
+3.A turn's rollout is atomic,so when the llm rollouts in a turn and suddenly the input tokens neer the limit(>limit-small_number),compression will not be triggered temporarily.(this is a trade off for gambling the turn is not too long to make the llm's context crash,cause the loop engineering is a long horizon task but each turn is not so long,as each turn is improving a little in the former turns,maybe just the first turn is a big turn.However,the first turn's tokens use is hard to exceed the 1M context of sota llm nowadays,so in a word,the trade off for the atomic turn's rollout is reasonable.the output of a model has max_output_limit,if we set the compression_limit-small_num 600k(<<1M),the system will be safe in most times.)The discipline is all about turn-level(not intra-turn level):The whole input blocks' tokens nears limit:Compression is triggered automatically **before rollout**. Two sets must be kept distinct:
 
 - **Token-count set (decides WHETHER to compress):** the **whole input context** — system prompt + first user prompt + every turn-feedback + all input blocks, counted together. The system prompt IS included in this count.
 - **Compression set (decides WHAT to compress):** grows by stage. The system prompt is NEVER compressed — it is always preserved verbatim (it carries the task/protocol and must stay identical across the trajectory). But the first user prompt and turn-feedbacks are NOT always preserved:
   - **Stage 1 (collect S blocks):** only the input blocks are touched; first user prompt + turn-feedbacks are preserved verbatim.
   - **Stage 2 (sota-LLM compression, triggered when the S-block sequence still nears the limit):** the LLM input INCLUDES the first user prompt and turn-feedbacks (see the explicit "the first user prompt and turn-feedbacks are included!" below) — they get folded into the single `<turn_summary>` output. Only the system prompt stays verbatim through both stages.
 
-If the whole-input-context token count nears the limit, we compress **until it no longer nears the limit**, then proceed to rollout. This step finally stores the compressed input and its rollout blocks. The compression is firstly collecting all the S block in the input blocks as the compression result(new input blocks),the first user prompt and turn-feedback and the system prompt are ignored,then judge the length of the new input blocks(S block sequence),if the sequence's tokens nears limit again,use sota llm to do a compression(the first user prompt and turn-feedbacks are included!) and use <turn_summary>\nThe Output Of llm\n</turn_summary> as the new input block and compression results. This one block's tokens should be guaranteed that they don't near the limit; if the sota llm output still exceeds the limit, retry the llm compression (the retry/backoff mechanism of the sota llm is decoupled from SCRIBE) until the single block fits.
+If the whole-input-context token count nears the limit, we compress **until it no longer nears the limit**, then proceed to rollout. This turn finally stores the compressed input and its new and rollout blocks and its reward. The compression is firstly collecting all the S block in the input blocks as the compression result(new input blocks),the first user prompt and turn-feedback and the system prompt are ignored,then judge the length of the new input blocks(S block sequence),if the sequence's tokens nears limit again,use sota llm to do a compression(the first user prompt and turn-feedbacks are included!) and use <turn_summary>\nThe Output Of llm\n</turn_summary> as the new input block and compression results. This one block's tokens should be guaranteed that they don't near the limit; if the sota llm output still exceeds the limit, retry the llm compression (the retry/backoff mechanism of the sota llm is decoupled from SCRIBE) until the single block fits.
 
 **Hard boundary:** if the incompressible prefix — system prompt + first user prompt + all turn-feedbacks, with every input block already compressed away to nothing — still exceeds the limit on its own, compression cannot help. In that case SCRIBE raises an error (the trajectory config is infeasible: the preserved-verbatim parts alone overflow the context window).
 
 for instance:
 
 ```text
-if k=3,max_steps=5,max_turns=3
+if k=3,max_turns=15
 
 turn0:
-
-step0:
 system_prompt
 first_user_prompt
 list[T/O/(list[A]+list[AR])]+R+S,REWARD0
 
-step1:
+REWARD0 does not exceed the threshold.add feedback,
+next turn:
+
+turn1:
+(input:
 system_prompt
 first_user_prompt
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn0
+)
+system_prompt
+first_user_prompt
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn0
 list[T/O/(list[A]+list[AR])]+R+S,
 REWARD1
 
-step2:
+REWARD1 does not exceed the threshold.add feedback,
+next turn:
+
+turn2:
+(input:
 system_prompt
 first_user_prompt
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn0
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn1
+)
+system_prompt
+first_user_prompt
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn0
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn1
 list[T/O/(list[A]+list[AR])]+R+S,
 REWARD2
 
-step3:
+REWARD2 does not exceed the threshold.add feedback,
+next turn:
+
+turn3:
 system_prompt
 first_user_prompt
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn0
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn1
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn2
 list[T/O/(list[A]+list[AR])]+R+S,
 REWARD3
 
-step4:
+REWARD3 does not exceed the threshold.add feedback,
+next turn:
+
+turn4:
 system_prompt
 first_user_prompt
 S
+feedback_from_turn0
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn1
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn2
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn3
 list[T/O/(list[A]+list[AR])]+R+S,
 REWARD4
 
 REWARD4 does not exceed the threshold.add feedback,
 next turn:
 
-turn1:
-
-step0:
+turn5:
 system_prompt
 first_user_prompt
 S
+feedback_from_turn0
 S
+feedback_from_turn1
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn2
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn3
 list[O/(list[A]+list[AR])]+S
-feedback_from_turn_0
+feedback_from_turn4
 list[T/O/(list[A]+list[AR])]+R+S,
 REWARD5
 
-step1：
+REWARD5 does not exceed the threshold.add feedback,
+next turn:
+
+turn6：
 len(
 system_prompt
 first_user_prompt
 S
+feedback_from_turn0
 S
+feedback_from_turn1
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn2
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn3
 list[O/(list[A]+list[AR])]+S
-feedback_from_turn_0
-list[T/O/(list[A]+list[AR])]+R+S
-) > limit-small_number,compression triggered before rollout (check-before-rollout rule),other steps are all <=.
+feedback_from_turn4
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn5
+) firstly > limit-small_number,compression triggered before rollout (check-before-rollout rule).
 
 -> 
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
 
 len(
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
 ) <= limit-small_number
 
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
 list[T/O/(list[A]+list[AR])]+R+S,
 REWARD6
 
-step2：
+REWARD6 does not exceed the threshold.add feedback,
+next turn:
+
+turn7：
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn6
 list[T/O/(list[A]+list[AR])]+R+S,
 REWARD7
 
-step3:
+REWARD7 does not exceed the threshold.add feedback,
+next turn:
+
+turn8:
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn6
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn7
 list[T/O/(list[A]+list[AR])]+R+S,
 REWARD8
 
-step4: 
+REWARD8 does not exceed the threshold.add feedback,
+next turn:
+
+turn9: 
 len(
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn6
 list[O/(list[A]+list[AR])]+S
-list[T/O/(list[A]+list[AR])]+R+S
+feedback_from_turn7
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn8
 )
-> limit-small_number,compression triggered,the second to last and the last steps(turn1-step2,turn1-step3) are both <=.
+> limit-small_number,compression triggered.
 
 ->
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S S S S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+S feedback_from_turn6
+S feedback_from_turn7
+S feedback_from_turn8
 
 len(
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S S S S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+S feedback_from_turn6
+S feedback_from_turn7
+S feedback_from_turn8
 )<= limit-small_number
 
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S S S S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+S feedback_from_turn6
+S feedback_from_turn7
+S feedback_from_turn8
 list[T/O/(list[A]+list[AR])]+R+S,
 REWARD9
 
 REWARD9 does not exceed the threshold.add feedback,
 next turn:
 
-turn2:
-
-step0：
+turn10:
 len(
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S S S S
-list[T/O/(list[A]+list[AR])]+R+S
-feedback_from_turn_1
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+S feedback_from_turn6
+S feedback_from_turn7
+S feedback_from_turn8
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn9
 )
 >limit-small_number,compression triggered.
 
 ->
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S S S S S
-feedback_from_turn_1
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+S feedback_from_turn6
+S feedback_from_turn7
+S feedback_from_turn8
+S feedback_from_turn9
 
 len(
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S S S S S
-feedback_from_turn_1
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+S feedback_from_turn6
+S feedback_from_turn7
+S feedback_from_turn8
+S feedback_from_turn9
 ) still
 > limit-small_number,compression triggered.
 
--> system_prompt S(call sota llm to summarize once,the its tokens does not near the limit)
+-> system_prompt S(call sota llm to summarize the input only except system_prompt once,then its tokens does not near the limit)
 
-system_prompt S,REWARD10
+system_prompt S
+list[T/O/(list[A]+list[AR])]+R+S,REWARD10
 
-step1:
+turn11:
 
-system_prompt S list[T/O/(list[A]+list[AR])]+R+S,REWARD11
+system_prompt S 
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn10
+list[T/O/(list[A]+list[AR])]+R+S,REWARD11
 
 REWARD11 exceeds threshold!!!In threshold mode,the loop stops.
 ```
@@ -234,117 +351,274 @@ REWARD11 exceeds threshold!!!In threshold mode,the loop stops.
 ```text
 The trajectory finally is:
 
-step0:
+turn0:
+input(please make the below system_prompt,user prompt and scribe blocks to the message (list[dict]) data structure of openai to store.for other turns,the rule is the sames):
 system_prompt
 first_user_prompt
-list[T/O/(list[A]+list[AR])]+R+S,REWARD0
 
-step1:
+new blocks(store the list[ScribeBlock]):
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
+REWARD0
+
+---
+
+turn1:
+input(please make the below system_prompt,user prompt and scribe blocks to the message (list[dict]) data structure of openai to store.for other turns,the rule is the sames):
 system_prompt
 first_user_prompt
 list[O/(list[A]+list[AR])]+S
-list[T/O/(list[A]+list[AR])]+R+S,
+feedback_from_turn0
+
+new blocks(store the list[ScribeBlock]):
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
 REWARD1
 
-step2:
+---
+
+turn2:
+input:
 system_prompt
 first_user_prompt
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn0
 list[O/(list[A]+list[AR])]+S
-list[T/O/(list[A]+list[AR])]+R+S,
+feedback_from_turn1
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
 REWARD2
 
-step3:
+---
+
+turn3:
+input:
 system_prompt
 first_user_prompt
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn0
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn1
 list[O/(list[A]+list[AR])]+S
-list[T/O/(list[A]+list[AR])]+R+S,
+feedback_from_turn2
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
 REWARD3
 
-step4:
+---
+
+turn4:
+input:
 system_prompt
 first_user_prompt
 S
+feedback_from_turn0
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn1
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn2
 list[O/(list[A]+list[AR])]+S
-list[T/O/(list[A]+list[AR])]+R+S,
+feedback_from_turn3
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
 REWARD4
 
-step5:
+---
+
+turn5:
+input:
 system_prompt
 first_user_prompt
 S
+feedback_from_turn0
 S
+feedback_from_turn1
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn2
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn3
 list[O/(list[A]+list[AR])]+S
-feedback_from_turn_0
-list[T/O/(list[A]+list[AR])]+R+S,
+feedback_from_turn4
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
 REWARD5
 
-step6:
+---
+
+turn6:
+input(Note!the input is the final compressed input):
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S
-list[T/O/(list[A]+list[AR])]+R+S,
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
 REWARD6
 
-step7：
+---
+
+turn7:
+input:
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
 list[O/(list[A]+list[AR])]+S
-list[T/O/(list[A]+list[AR])]+R+S,
+feedback_from_turn6
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
 REWARD7
 
-step8:
+---
+
+turn8:
+input:
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
 list[O/(list[A]+list[AR])]+S
+feedback_from_turn6
 list[O/(list[A]+list[AR])]+S
-list[T/O/(list[A]+list[AR])]+R+S,
+feedback_from_turn7
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
 REWARD8
 
-step9:
+---
+
+turn9:
+input:
 system_prompt
 first_user_prompt
-S S S S S
-feedback_from_turn_0
-S S S S
-list[T/O/(list[A]+list[AR])]+R+S,
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+S feedback_from_turn6
+S feedback_from_turn7
+S feedback_from_turn8
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
 REWARD9
 
-step10：
-system_prompt S,REWARD10
+---
 
-step11:
-system_prompt S list[T/O/(list[A]+list[AR])]+R+S,REWARD11
+turn10:
+input:
+system_prompt S
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
+REWARD10
+
+---
+
+turn11:
+input：
+system_prompt S 
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn10
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
+REWARD11
 ```
 
 ## Second : the reward rule of a turn is:
 
 the metrics(MULTI-DIMENSIONAL REWARD PREVENTS HACKING)
-（ALL THE METRICS ARE JUST FOCUED ON THIS TURN'S NEW BLOCKS,NOT THE INPUT BLOCKS）:
+（**ALL THE METRICS ARE JUST FOCUED ON THIS TURN'S NEW BLOCKS,NOT THE INPUT BLOCKS**）:
 
 1.the reward of the final step.
 
-2.the submit tool call time.
+2.the submit tool call times in the rollout blocks of this turn.(check if it's 1)
 
-3.the length of the steps used.(max is max_steps)
+3.the length of the steps used.(computed by the number of A,keep the metric 1 the same level while make metric 3 as lower as possible)
 
-4.the format correctness(if have think,output,tool_call,tool_response,reflect,turn_summary block,if reflect are the second to last block,if the turn_summary are the last block,if the data of the turn is valid,etc.)
+4.the format correctness(this metric focuses on if the turn have think,output,tool_call,tool_response,reflect,turn_summary block,if reflect are the second to last block,if the turn_summary are the last block,if the any data of the turn is and how much is invalid(see our code what the invalid is),etc.)
 
-5.the total tokens rollouted out in this turn(include think,output,tool_call,reflect and turn_summary block,exclude the tool_response block.This metric is larger,the reward is lower,but should not effect reward so much)
+5.the total tokens rollouted out in this turn(namely rollout blocks,include think,output,tool_call,reflect and turn_summary block,exclude the tool_response block.This metric is larger,the reward is lower,but should not effect reward so much)
 
 6.token reuse ratio,
 reuse = |S ∩ (O∪A)| / |O∪A|
@@ -398,7 +672,7 @@ trajectory_reward = final_turn_reward * decay ** len(turns_used)
 
 where `final_turn_reward` is the turn-level reward of the last turn (0~1, from the 13 metrics), `len(turns_used)` is the number of turns actually used in this trajectory, and `decay` is a discount factor in (0,1) (e.g. 0.8). This rewards solving in fewer turns without diluting the main signal as a plain division would: a 1-turn success gives `final_turn_reward * decay`, a 3-turn success gives `final_turn_reward * decay^3` — the gap scales geometrically but the base signal (`final_turn_reward`) is preserved.
 
-## Fourth : Credit Assignment:
+## Fourth : RL Training and Credit Assignment:
 
 we use grpo for different trajectory.
 -not reinforce: not stable,variance so large
@@ -409,10 +683,130 @@ The reward→credit pipeline (written out explicitly to avoid confusing "reward"
 
 1. **trajectory_reward** (from Section Third) is the quantity GRPO compares across the group of trajectories sampled on the same task. The GRPO group baseline = mean of trajectory_reward over the group; each trajectory's **advantage** = (its trajectory_reward − group mean) / group std.
 2. **turn-level credit**: the trajectory advantage is shared equally across all turns in that trajectory → each turn's credit = trajectory_advantage / len(turns_used).
-3. **token-level credit**: the turn's credit is shared equally across all rollout tokens in that turn → each rollout token's credit = turn_credit / num_rollout_tokens_in_turn. (Rollout tokens = model-generated tokens only: think / output / tool_call / reflect / turn_summary blocks. Input blocks, tool_response, system/kickoff/feedback are masked — not model-generated.)
 
-So the chain is fixed: **trajectory_reward → (GRPO group) → trajectory_advantage → (÷turns) → turn credit → (÷rollout tokens) → token credit**, and the token credit is what multiplies ∇log P(token) in the policy gradient.
+A turn may have the data structure:
+input(list[Dict])
+new(list[ScribeBlock])
+rollout(list[ScribeBlock])
 
-we will assign the same credit for each turn in the same trajectory,and the same credit for each rollout token in the same turn.
+we need to use this structure to convert to:
+
+list[Step]
+
+Step:
+input:list[Dict]
+output:list[ScribeBlock]
+
+for instance:
+
+we have turn7:
+```text
+turn7:
+input:
+system_prompt
+first_user_prompt
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn6
+
+new:
+list[T/O/(list[A]+list[AR])]+R+S
+
+rollout blocks(in order)(store the list[ScribeBlock]):
+list[T/O/(list[A])]+R+S
+
+reward(int):
+REWARD7
+```
+
+we have steps of turn7:
+```text
+step0:
+
+input:
+system_prompt
+first_user_prompt
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn6
+
+output:
+T O A 
+
+step1:
+
+input:
+system_prompt
+first_user_prompt
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn6
+T O A AR
+
+output:
+O A
+
+step2:
+
+input:
+system_prompt
+first_user_prompt
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn6
+T O A AR
+O A AR
+
+output:
+O T O A
+
+step3：
+
+input:
+system_prompt
+first_user_prompt
+S feedback_from_turn0
+S feedback_from_turn1
+S feedback_from_turn2
+S feedback_from_turn3
+S feedback_from_turn4
+S feedback_from_turn5
+list[O/(list[A]+list[AR])]+S
+feedback_from_turn6
+T O A AR
+O A AR
+O T O A AR
+
+output:
+O R S
+```
+
+So in a word,we can get list[Step] from a turn.
+
+3.**Step-level credit**:the turn's credit is shared equally across all steps in that turn → each step's credit = turn_credit / num_steps_in_turn.
+
+4. **token-level credit**: the step's credit is shared equally across all rollout tokens in that step → each rollout token's credit = step_credit / num_rollout_tokens_in_step. (Rollout tokens = model-generated tokens only: think / output / tool_call / reflect / turn_summary blocks.(Step.output) Input blocks, tool_response, system/kickoff/feedback are masked — not model-generated.)
+
+So the chain is fixed: **trajectory_reward → (GRPO group) → trajectory_advantage → (÷turns) → turn credit → (÷steps) → step credit → (÷rollout tokens) → token credit**, and the token credit is what multiplies ∇log P(token) in the policy gradient.
 
 we have TOKEN-LEVEL CREDIT ASSIGNMENT,because the turn_summary has the token reuse ratio.
