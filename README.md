@@ -11,7 +11,7 @@ Our infra now can collect the rollout data,in threshold mode we can stop once th
 ## First ：the context engineering of each turn:
 
 Every LLM response follows this strict tag order. For convenience,we use T to stand for the think block,A to stand for the tool_call block,O to stand for the output block,R to stand for the reflect block,S to stand for the turn_summary block and AR to stand for the tool_response block.A step's rollout usually is a
-list[T/O/list[A]+list[AR]]+R+S  structure.
+list[T/O/(list[A]+list[AR])]+R+S  structure.
 each step stores its rollout blocks and its reward(most of the step is 0,only the step after the last submit step gets the real reward).
 
 History Compression rule:
@@ -39,40 +39,40 @@ turn0:
 step0:
 system_prompt
 first_user_prompt
-list[T/O/list[A]+list[AR]]+R+S,REWARD0
+list[T/O/(list[A]+list[AR])]+R+S,REWARD0
 
 step1:
 system_prompt
 first_user_prompt
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD1
 
 step2:
 system_prompt
 first_user_prompt
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD2
 
 step3:
 system_prompt
 first_user_prompt
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD3
 
 step4:
 system_prompt
 first_user_prompt
 S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD4
 
 REWARD4 does not exceed the threshold.add feedback,
@@ -85,11 +85,11 @@ system_prompt
 first_user_prompt
 S
 S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
 feedback_from_turn_0
-list[T/O/list[A]+list[AR]]+R+S,
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD5
 
 step1：
@@ -98,11 +98,11 @@ system_prompt
 first_user_prompt
 S
 S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
 feedback_from_turn_0
-list[T/O/list[A]+list[AR]]+R+S
+list[T/O/(list[A]+list[AR])]+R+S
 ) > limit-small_number,compression triggered before rollout (check-before-rollout rule),other steps are all <=.
 
 -> 
@@ -125,7 +125,7 @@ first_user_prompt
 S S S S S
 feedback_from_turn_0
 S
-list[T/O/list[A]+list[AR]]+R+S,
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD6
 
 step2：
@@ -134,8 +134,8 @@ first_user_prompt
 S S S S S
 feedback_from_turn_0
 S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD7
 
 step3:
@@ -144,9 +144,9 @@ first_user_prompt
 S S S S S
 feedback_from_turn_0
 S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD8
 
 step4: 
@@ -156,9 +156,9 @@ first_user_prompt
 S S S S S
 feedback_from_turn_0
 S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S
 )
 > limit-small_number,compression triggered,the second to last and the last steps(turn1-step2,turn1-step3) are both <=.
 
@@ -182,7 +182,7 @@ first_user_prompt
 S S S S S
 feedback_from_turn_0
 S S S S
-list[T/O/list[A]+list[AR]]+R+S,
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD9
 
 REWARD9 does not exceed the threshold.add feedback,
@@ -197,7 +197,7 @@ first_user_prompt
 S S S S S
 feedback_from_turn_0
 S S S S
-list[T/O/list[A]+list[AR]]+R+S
+list[T/O/(list[A]+list[AR])]+R+S
 feedback_from_turn_1
 )
 >limit-small_number,compression triggered.
@@ -226,7 +226,7 @@ system_prompt S,REWARD10
 
 step1:
 
-system_prompt S list[T/O/list[A]+list[AR]]+R+S,REWARD11
+system_prompt S list[T/O/(list[A]+list[AR])]+R+S,REWARD11
 
 REWARD11 exceeds threshold!!!In threshold mode,the loop stops.
 ```
@@ -237,40 +237,40 @@ The trajectory finally is:
 step0:
 system_prompt
 first_user_prompt
-list[T/O/list[A]+list[AR]]+R+S,REWARD0
+list[T/O/(list[A]+list[AR])]+R+S,REWARD0
 
 step1:
 system_prompt
 first_user_prompt
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD1
 
 step2:
 system_prompt
 first_user_prompt
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD2
 
 step3:
 system_prompt
 first_user_prompt
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD3
 
 step4:
 system_prompt
 first_user_prompt
 S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD4
 
 step5:
@@ -278,11 +278,11 @@ system_prompt
 first_user_prompt
 S
 S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
 feedback_from_turn_0
-list[T/O/list[A]+list[AR]]+R+S,
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD5
 
 step6:
@@ -291,7 +291,7 @@ first_user_prompt
 S S S S S
 feedback_from_turn_0
 S
-list[T/O/list[A]+list[AR]]+R+S,
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD6
 
 step7：
@@ -300,8 +300,8 @@ first_user_prompt
 S S S S S
 feedback_from_turn_0
 S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD7
 
 step8:
@@ -310,9 +310,9 @@ first_user_prompt
 S S S S S
 feedback_from_turn_0
 S
-list[O/list[A]+list[AR]]+S
-list[O/list[A]+list[AR]]+S
-list[T/O/list[A]+list[AR]]+R+S,
+list[O/(list[A]+list[AR])]+S
+list[O/(list[A]+list[AR])]+S
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD8
 
 step9:
@@ -321,14 +321,14 @@ first_user_prompt
 S S S S S
 feedback_from_turn_0
 S S S S
-list[T/O/list[A]+list[AR]]+R+S,
+list[T/O/(list[A]+list[AR])]+R+S,
 REWARD9
 
 step10：
 system_prompt S,REWARD10
 
 step11:
-system_prompt S list[T/O/list[A]+list[AR]]+R+S,REWARD11
+system_prompt S list[T/O/(list[A]+list[AR])]+R+S,REWARD11
 ```
 
 ## Second : the reward rule of a turn is:
