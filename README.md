@@ -758,7 +758,7 @@ S feedback_from_turn4
 S feedback_from_turn5
 list[O/(list[A]+list[AR])]+S
 feedback_from_turn6
-T O A AR
+O A AR
 
 output:
 O A
@@ -776,7 +776,7 @@ S feedback_from_turn4
 S feedback_from_turn5
 list[O/(list[A]+list[AR])]+S
 feedback_from_turn6
-T O A AR
+O A AR
 O A AR
 
 output:
@@ -795,9 +795,9 @@ S feedback_from_turn4
 S feedback_from_turn5
 list[O/(list[A]+list[AR])]+S
 feedback_from_turn6
-T O A AR
 O A AR
-O T O A AR
+O A AR
+O O A AR
 
 output:
 O R S
