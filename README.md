@@ -31,7 +31,7 @@ If the whole-input-context token count nears the limit, we compress **until it n
 
 **Hard boundary:** if the incompressible prefix — system prompt + first user prompt + all turn-feedbacks, with every input block already compressed away to nothing — still exceeds the limit on its own, compression cannot help. In that case SCRIBE raises an error (the trajectory config is infeasible: the preserved-verbatim parts alone overflow the context window).
 
-if the turn's new block has no S block,that means this turn the llm's rollout format is wrong,when this turn need to only save the S block in context,just save O and A block instead.This is a special case,the below examples and statements all suppose the S block will be generated rightly in every turn.but if this special scene happens,you know you need to preserve O&A blocks instead when this turn is old enough to just need to preserve S block.
+if the turn's new block has no S block,that means this turn the llm's rollout format is wrong,when this turn need to only save the S block in context,just save O and A block instead.This is a special case,the below examples and statements all suppose the S block will be generated rightly in every turn.but if this special scene happens,you know you need to preserve O&A blocks instead when this turn is old enough to just need to preserve S block.And recent turns that do not have the S block just preserve O/A/AR blocks.
 
 for instance:
 
