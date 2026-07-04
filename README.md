@@ -651,7 +651,7 @@ the metrics(MULTI-DIMENSIONAL REWARD PREVENTS HACKING)
 
 4.the format correctness. This metric checks:
    (a) the turn contains the expected block types: think, output, tool_call, tool_response, reflect, turn_summary;
-   (b) in the final non-tool step, reflect is the second-to-last block and turn_summary is the last block;
+   (b) in the final non-tool step, the message must end with **exactly one <reflect> block followed by exactly one <turn_summary> block** (reflect is the second-to-last block, turn_summary is the last block). Missing either block, or having them in the wrong order, is a format error;
    (c) **<reflect> and <turn_summary> appear only in the final step** — any R/S block in a non-final step is a format error;
    (d) **the final non-tool step must contain NO tool_calls**: an assistant message that mixes <reflect>/<turn_summary> with tool_call(s) is invalid, because R+S must be plain text;
    (e) **only the agreed-upon SCRIBE tags are allowed** — any tag other than `<think>`, `<tool_call>`, `<tool_response>`, `<reflect>`, and `<turn_summary>` is invalid. Examples of invalid tags include `<submit>`, `<bash>`, `<action>`, `<plan>`, etc.;
