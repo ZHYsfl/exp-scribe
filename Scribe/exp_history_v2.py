@@ -45,7 +45,7 @@ async def main():
     ws = Path("/root/autodl-tmp/exp"); ws.mkdir(parents=True, exist_ok=True)
     env = LinuxWorkspaceEnv(
         task_description="Compute 456 raised to the power of 3, then call submit with the numeric result.",
-        workspace_root=ws, max_steps=2, right_answer="94818816",
+        workspace_root=ws, max_steps=3, right_answer="94818816",
     )
     counter = DeepSeekTokenCounter()
     hm = HistoryManager(counter, k=2, hard_limit=4096, compression_margin=512)
