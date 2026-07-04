@@ -38,11 +38,11 @@ A block and the OpenAI message that carries it are two different layers:
 
 History Compression rule:
 
-1.Disposable T&R blocks: T and R blocks are disposable. Once generated, they are stripped before the next LLM call (next step) within the turn, and they never appear in future turns' inputs.
+1. Disposable T&R blocks: T and R blocks are disposable. Once generated, they are stripped before the next LLM call (next step) within the turn, and they never appear in future turns' inputs.
 
-2.The turns before the recent k(default k=3) turns only preserve the S block (with its `<turn_summary>` tags intact).
+2. The turns before the recent k(default k=3) turns only preserve the S block (with its `<turn_summary>` tags intact).
 
-3.A turn's rollout is atomic,so when the llm rollouts in a turn and suddenly the input tokens neer the limit(>limit-small_number),compression will not be triggered temporarily.(this is a trade off for gambling the turn is not too long to make the llm's context crash,cause the loop engineering is a long horizon task but each turn is not so long,as each turn is improving a little in the former turns,maybe just the first turn is a big turn.However,the first turn's tokens use is hard to exceed the 1M context of sota llm nowadays,so in a word,the trade off for the atomic turn's rollout is reasonable.the output of a model has max_output_limit,if we set the compression_limit-small_num 600k(<<1M),the system will be safe in most times.)The discipline is all about turn-level(not intra-turn level):The whole input blocks' tokens nears limit:Compression is triggered automatically **before rollout**. Two sets must be kept distinct:
+3. A turn's rollout is atomic,so when the llm rollouts in a turn and suddenly the input tokens neer the limit(>limit-small_number),compression will not be triggered temporarily.(this is a trade off for gambling the turn is not too long to make the llm's context crash,cause the loop engineering is a long horizon task but each turn is not so long,as each turn is improving a little in the former turns,maybe just the first turn is a big turn.However,the first turn's tokens use is hard to exceed the 1M context of sota llm nowadays,so in a word,the trade off for the atomic turn's rollout is reasonable.the output of a model has max_output_limit,if we set the compression_limit-small_num 600k(<<1M),the system will be safe in most times.)The discipline is all about turn-level(not intra-turn level):The whole input blocks' tokens nears limit:Compression is triggered automatically **before rollout**. Two sets must be kept distinct:
 
 - **Token-count set (decides WHETHER to compress):** the **whole input context** — system prompt + first user prompt + every turn-feedback + all input blocks, counted together. The system prompt IS included in this count.
 - **Compression set (decides WHAT to compress):** grows by stage. The system prompt is NEVER compressed — it is always preserved verbatim (it carries the task/protocol and must stay identical across the trajectory). But the first user prompt and turn-feedbacks are NOT always preserved:
@@ -637,19 +637,19 @@ REWARD11
 the metrics(MULTI-DIMENSIONAL REWARD PREVENTS HACKING)
 （**ALL THE METRICS ARE JUST FOCUED ON THIS TURN'S NEW BLOCKS,NOT THE INPUT BLOCKS**）:
 
-1.the reward of the final step. It is the product of three factors:
+1. the reward of the final step. It is the product of three factors:
    (a) **answer correctness** — 1.0 if the submitted answer matches the right answer, else 0.0;
    (b) **natural termination bonus** — the turn must end with a final non-tool LLM call that produces O+R+S. If the turn ends by hitting `max_steps` (`truncated=True`) or by a tool-call step, this factor is 0.0;
    (c) **truncated penalty** — if the turn is truncated by the step limit before natural termination, apply an additional penalty (e.g. -0.2).
    In short, only a correct answer that is produced by a clean final non-tool step can receive the full final-step reward.
 
-2.the tool usage quality in the rollout blocks of this turn:
+2. the tool usage quality in the rollout blocks of this turn:
    (a) **submit count** — submit must be called exactly once per turn;
    (b) **parallel identical tool calls in a single LLM call are penalized** — if an assistant message contains multiple tool_calls with the **same function name AND the same arguments**, each duplicated call incurs a penalty (e.g. -0.2 per duplicated call). "Same" means an exact match on both `name` and normalized `arguments` (e.g. `json.dumps(args, sort_keys=True)`). Cross-step repetitions are NOT penalized, because the environment state may have changed between steps (e.g. run → edit → run the same command again).
 
-3.the length of the steps used.(computed by the number of A,keep the metric 1 the same level while make metric 3 as lower as possible)
+3. the length of the steps used.(computed by the number of A,keep the metric 1 the same level while make metric 3 as lower as possible)
 
-4.the format correctness. This metric checks:
+4. the format correctness. This metric checks:
    (a) the turn contains the expected block types: think, output, tool_call, tool_response, reflect, turn_summary;
    (b) in the final non-tool step, the message must end with **exactly one <reflect> block followed by exactly one <turn_summary> block** (reflect is the second-to-last block, turn_summary is the last block). Missing either block, or having them in the wrong order, is a format error;
    (c) **<reflect> and <turn_summary> appear only in the final step** — any R/S block in a non-final step is a format error;
@@ -658,36 +658,36 @@ the metrics(MULTI-DIMENSIONAL REWARD PREVENTS HACKING)
    (f) **R+S may only appear after submit has been called in this turn** — a turn that ends with R+S but never called submit is invalid;
    (g) how much of the turn's parsed data is invalid (see the code's invalid detection).
 
-5.the total tokens rollouted out in this turn(namely rollout blocks,include think,output,tool_call,reflect and turn_summary block,exclude the tool_response block.This metric is larger,the reward is lower,but should not effect reward so much)
+5. the total tokens rollouted out in this turn(namely rollout blocks,include think,output,tool_call,reflect and turn_summary block,exclude the tool_response block.This metric is larger,the reward is lower,but should not effect reward so much)
 
-6.token reuse ratio,
+6. token reuse ratio,
 reuse = |S ∩ (O∪A)| / |O∪A|
 where S = token set of the turn_summary block, O = token set of the output block, A = token set of the tool_call block. The denominator is O∪A only (S is excluded from the denominator on purpose, so the ratio measures "what fraction of the ground-truth key tokens the summary reuses" and is not inflated by the summary's own length).
 
-7.the faithfulness of the turn summary— did the summary tell the truth?(use llm as a judge to give a score of the faithfulness of the turn summary,the turn summary should be a statement of what we do in the output and tool_call block.The judge compares the summary against 
+7. the faithfulness of the turn summary— did the summary tell the truth?(use llm as a judge to give a score of the faithfulness of the turn summary,the turn summary should be a statement of what we do in the output and tool_call block.The judge compares the summary against 
 the ground-truth blocks(output and tool_call blocks) and scores how consistent they are.) High score is the summary 
 accurately reports what was thought and done,while the low score is the summary fabricates, omits, or contradicts the real behavior.
 
-8.the direction neutrality - did the summary stay retrospective?The turn summary must only **look back** at the current turn. It must not predict, plan, or prescribe what the *next* turn should do.High score is the summary purely recaps,while the low score is the summary leaks into future planning.use llm as a judge.
+8. the direction neutrality - did the summary stay retrospective?The turn summary must only **look back** at the current turn. It must not predict, plan, or prescribe what the *next* turn should do.High score is the summary purely recaps,while the low score is the summary leaks into future planning.use llm as a judge.
 
-9.the turn focus of the turn summary - does the summary describe only this turn?
+9. the turn focus of the turn summary - does the summary describe only this turn?
 Then turn summary must be scoped strictly to the **current** turn.It must not mix in content from **earlier** turns - each turn's summary stands alone as the record of that turn alone.
 (Note: later turns' content cannot appear by construction — the summary is generated at the end of the current turn, before any subsequent turn exists. So this dimension only guards against bleeding **prior** turns in.)
 High score is the summary describes only what happened in this turn,while the low score is the summary folds prior turns' actions into the current one.
 use llm as a judge.
 
-10.the fluency of the turn summary,use llm as a judge.we need to improve the token reuse ratio metric,but if we pile up the key tokens awkwardly,that sucks.so we need to judge the fluency of the turn summary to make the turn summary fluent and natural.
+10. the fluency of the turn summary,use llm as a judge.we need to improve the token reuse ratio metric,but if we pile up the key tokens awkwardly,that sucks.so we need to judge the fluency of the turn summary to make the turn summary fluent and natural.
 
-11.the compression ratio of the summary,to improve the the token reuse ratio metric and the fluency of the turn summary,the model maybe use the whole ground-truth blocks(output and tool_call blocks) as a turn summary,that sucks.so we need to count the compression ratio of the summary:len(the token set in turn_summary block) / 
+11. the compression ratio of the summary,to improve the the token reuse ratio metric and the fluency of the turn summary,the model maybe use the whole ground-truth blocks(output and tool_call blocks) as a turn summary,that sucks.so we need to count the compression ratio of the summary:len(the token set in turn_summary block) / 
 len(the token set in output,tool_call block),this metric lower,the reward higher.This is a pure statistical metric (no LLM judge needed).
 
-12.Cross block N-gram overlap penalty,penalize copy-paste from ground-truth blocks.Even with #11 (compression ratio) blocking wholesale copying, the model may **partially** copy-paste: lifting consecutive phrases verbatim from the ground-truth blocks into the summary. This slips past #11 (not long enough to tank compression) and may even pass #10 (fluent, since it's real text),yet it is not genuine summarization.
+12. Cross block N-gram overlap penalty,penalize copy-paste from ground-truth blocks.Even with #11 (compression ratio) blocking wholesale copying, the model may **partially** copy-paste: lifting consecutive phrases verbatim from the ground-truth blocks into the summary. This slips past #11 (not long enough to tank compression) and may even pass #10 (fluent, since it's real text),yet it is not genuine summarization.
 This metric computes the overlap of **contiguous n-grams** (n=4 recommended) between the turn_summary block and the ground-truth (output + tool_call) blocks:
 shared = set(ngrams(summary,4)) ∩ set(ngrams(ground_truth, 4))
 overlap_ratio = |shared| / |set(ngrams(summary, 4))|
 Higher overlap → higher penalty → lower reward. It is a pure statistical metric (no LLM judge needed), cheap to compute.low overlap is the summary rephrases in its own words,the high overlap is the summary lifts verbatim runs from ground-truth.
 
-13.Intra-block N-gram Overlap Penalty — penalize repetition within a block.#12 only catches the summary copying from ground-truth (cross-block). It cannot see a block repeating *itself internally* — a common small-model /early-RL failure where a block loops the same phrase to pad length.For each model-generated block(think / output / reflect / turn_summary),compute the share of its n-grams 
+13. Intra-block N-gram Overlap Penalty — penalize repetition within a block.#12 only catches the summary copying from ground-truth (cross-block). It cannot see a block repeating *itself internally* — a common small-model /early-RL failure where a block loops the same phrase to pad length.For each model-generated block(think / output / reflect / turn_summary),compute the share of its n-grams 
 (n=4) that are redundant due to internal repetition:
 ```python
 def intra_overlap(block_tokens,n=4):
@@ -715,9 +715,10 @@ where `final_turn_reward` is the turn-level reward of the last turn (0~1, from t
 ## Fourth : RL Training and Credit Assignment:
 
 we use grpo for different trajectory.
--not reinforce: not stable,variance so large
--not ppo: critic model is expensive
--but grpo: stable enough,more effective
+
+- not reinforce: not stable,variance so large
+- not ppo: critic model is expensive
+- but grpo: stable enough,more effective
 
 The reward→credit pipeline (written out explicitly to avoid confusing "reward" with "credit"):
 
@@ -849,7 +850,7 @@ O R S
 
 So in a word,we can get list[Step] from a turn.
 
-3.**Step-level credit**:the turn's credit is shared equally across all steps in that turn → each step's credit = turn_credit / num_steps_in_turn.
+3. **Step-level credit**:the turn's credit is shared equally across all steps in that turn → each step's credit = turn_credit / num_steps_in_turn.
 
 4. **token-level credit**: the step's credit is shared equally across all rollout tokens in that step → each rollout token's credit = step_credit / num_rollout_tokens_in_step. (Rollout tokens = model-generated tokens only: think / output / tool_call / reflect / turn_summary blocks.(Step.output) Input blocks, tool_response, system/kickoff/feedback are masked — not model-generated.)
 
