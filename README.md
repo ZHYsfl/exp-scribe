@@ -1,10 +1,10 @@
-# SCRIBE : Agents Should Write What They Learn
+# SCRIBE : Agents Should Write What They Learn （by Zane）
 
 A new design paradigm and infra to LLM-agent training for Loop Engineering.
 
 SCRIBE extends the classic ReAct loop with explicit `Reflect` and `Summarize` phases.
 
-One trajectory is a loop,with many turns,and each turn with many steps.**We don't need to worry about the number of steps will "burst" in a turn,because we have the sft data to warm up the model,and in rl phase its exploration space will not be too large to make the steps loop crazily in one turn.
+One trajectory is a loop,with many turns,and each turn with many steps.We don't need to worry about the number of steps will "burst" in a turn,because we have the sft data to warm up the model,and in rl phase its exploration space will not be too large to make the steps loop crazily in one turn.
 
 Our infra now can collect the rollout data,in threshold mode we can stop once the result of a turn exceeds the pass threshold.Each turn we have a reward,and a trajectory reward is associated with the reward of all turns.
 
