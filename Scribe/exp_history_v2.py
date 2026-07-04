@@ -44,8 +44,8 @@ async def main():
                     base_url="http://127.0.0.1:8002/v1")
     ws = Path("/root/autodl-tmp/exp"); ws.mkdir(parents=True, exist_ok=True)
     env = LinuxWorkspaceEnv(
-        task_description="Compute 23*7, then call submit with the numeric result.",
-        workspace_root=ws, max_steps=2, right_answer="161",
+        task_description="Compute 456 raised to the power of 3, then call submit with the numeric result.",
+        workspace_root=ws, max_steps=2, right_answer="94818816",
     )
     counter = DeepSeekTokenCounter()
     hm = HistoryManager(counter, k=2, hard_limit=4096, compression_margin=512)
@@ -149,10 +149,12 @@ async def main():
             c = (m.get("content") or "")[:60].replace("\n", " ")
             print(f"  {m.get('role'):9s} | {c}")
         for m in last_input:
+            if m.get("role") == "system":
+                continue  # system prompt legitimately contains <think> example tags
             c = m.get("content") or ""
             assert "<think>" not in c, "T leaked into cross-turn input!"
             assert "<reflect>" not in c, "R leaked into cross-turn input!"
-        print("\n✅ no T/R in cross-turn input")
+        print("\n✅ no generated T/R in cross-turn input")
     env.close()
 
 
