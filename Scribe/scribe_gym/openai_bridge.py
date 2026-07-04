@@ -7,7 +7,10 @@ from .helpers import (
     extract_tool_calls,
     message_to_scribe_blocks,
 )
+from .history_manager import HistoryManager
+from .parsers import ScribeBlockType, parse_scribe_blocks, render_scribe_blocks
 from .tool_calling_env import ToolCallingScribeEnv
+from .turn_record import StepRecord, TurnRecord
 
 
 class GymBackedAgent(Agent):

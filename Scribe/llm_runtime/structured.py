@@ -55,12 +55,14 @@ class StructuredGenerator:
         max_retries: int = 3,
         temperature: float = 0.1,
         semaphore: asyncio.Semaphore | None = None,
+        max_tokens: int | None = None,
     ):
         self._client_or_pool = client
         self.model = model
         self.max_retries = max_retries
         self.temperature = temperature
         self._semaphore = semaphore
+        self._max_tokens = max_tokens
         # Populated on every ``generate()`` call. Order = chronological:
         # last_attempts[0] is the first try, last_attempts[-1] is the
         # successful one (or the final failure if generate() raised).
@@ -72,6 +74,8 @@ class StructuredGenerator:
             "messages": messages,
             "temperature": self.temperature,
         }
+        if self._max_tokens is not None:
+            kwargs["max_tokens"] = self._max_tokens
 
         async def _do_call() -> Any:
             if hasattr(self._client_or_pool, "acquire"):

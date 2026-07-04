@@ -47,31 +47,31 @@ class FakeClient:
         return type("C", (), {"completions": self._Completions(self)})()
 
 
-def test_summarize_returns_wrapped_turn_summary():
-    client = FakeClient(["the folded summary text"])
+def test_summarize_returns_bare_summary():
+    client = FakeClient(['{"summary": "the folded summary text"}'])
     comp = LLMSummarizerCompressor(client, model="m")
     result = asyncio.run(comp.summarize("sys", "kick", ["fb0"], ["s0"]))
-    assert "<turn_summary>" in result
-    assert "</turn_summary>" in result
-    assert "the folded summary text" in result
+    assert "<turn_summary>" not in result
+    assert "</turn_summary>" not in result
+    assert result == "the folded summary text"
 
 
-def test_summarize_wraps_when_model_omits_tags():
-    client = FakeClient(["raw without tags"])
-    comp = LLMSummarizerCompressor(client, model="m")
+def test_summarize_retries_on_invalid_json():
+    client = FakeClient(["not json", '{"summary": "valid after retry"}'])
+    comp = LLMSummarizerCompressor(client, model="m", max_retries=1)
     result = asyncio.run(comp.summarize("sys", "kick", [], ["s0"]))
-    assert result.startswith("<turn_summary>")
-    assert result.endswith("</turn_summary>")
+    assert result == "valid after retry"
+    assert client.calls == 2
 
 
 def test_compressor_protocol_duck_typing():
     class MyComp:
         async def summarize(self, system, kickoff, feedbacks, s_blocks):
-            return "<turn_summary>x</turn_summary>"
+            return "bare summary"
 
     assert isinstance(MyComp(), Compressor)  # runtime_checkable Protocol
 
 
 if __name__ == "__main__":
-    asyncio.run(test_summarize_returns_wrapped_turn_summary())
+    asyncio.run(test_summarize_returns_bare_summary())
     print("ok")

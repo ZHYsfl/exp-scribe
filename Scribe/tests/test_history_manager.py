@@ -21,7 +21,7 @@ from Scribe.scribe_gym import (
     TurnRecord,
 )
 from Scribe.scribe_gym.parsers import parse_scribe_blocks, ScribeBlockType
-from Scribe.scribe_gym.turn_record import rollout_from_new
+from Scribe.scribe_gym.turn_record import StepRecord
 
 
 # ---------------------------------------------------------------------------
@@ -39,13 +39,31 @@ def make_blocks(scribe_text):
     return blocks
 
 
-def mk_turn(scribe_text, retained_messages, feedback=None, reward=0.0):
-    blocks = make_blocks(scribe_text)
+def mk_turn(retained_messages, feedback=None, reward=0.0, input_messages=None):
+    """Build a TurnRecord from the (T/R-stripped) retained_messages this turn
+    contributed. step_records is derived from retained: each assistant message
+    becomes one StepRecord (output_blocks = parsed content, raw = the message);
+    tool messages attach to the preceding assistant's StepRecord.
+
+    retained_messages already have T/R stripped (as the real agent produces),
+    so output_blocks here has no T/R — fine for HistoryManager tests, which
+    check retained/has_summary/build_input, not T-in-output.
+    """
+    step_records: list = []
+    current = None
+    for m in retained_messages:
+        if m.get("role") == "assistant":
+            blocks, _ = parse_scribe_blocks(m.get("content") or "")
+            current = StepRecord(
+                input_messages=list(input_messages or []),
+                output_blocks=blocks,
+                raw_assistant_message=dict(m),
+            )
+            step_records.append(current)
+        elif m.get("role") == "tool" and current is not None:
+            current.tool_messages.append(dict(m))
     return TurnRecord(
-        input=[],
-        new_blocks=blocks,
-        rollout_blocks=rollout_from_new(blocks),
-        retained_messages=retained_messages,
+        step_records=step_records,
         reward=reward,
         feedback=feedback,
     )
@@ -65,7 +83,7 @@ def test_recent_turn_retains_all_retained_messages():
     retained = [
         {"role": "assistant", "content": "<turn_summary>sum0</turn_summary>"},
     ]
-    hm.add_turn(mk_turn("民主党t0 Канаoutput0<turn_summary>sum0</turn_summary>", retained))
+    hm.add_turn(mk_turn(retained))
     inp = hm.build_input()
     # system + kickoff + the retained summary message
     assert inp[0] == SYS
@@ -83,9 +101,7 @@ def test_old_turn_collapses_to_summary_only():
             {"role": "tool", "content": f"resp{i}"},
             {"role": "assistant", "content": f"<turn_summary>sum{i}</turn_summary>"},
         ]
-        hm.add_turn(mk_turn(
-            f"民主党t{i} Канаoutput{i}<turn_summary>sum{i}</turn_summary>", retained
-        ))
+        hm.add_turn(mk_turn(retained))
     inp = hm.build_input()
     # turn0 is old -> only its summary's BARE inner text (tags stripped), NOT output0/resp0
     contents = [m.get("content", "") for m in inp]
@@ -113,9 +129,9 @@ def test_old_turn_strips_O_and_R_keeps_only_S():
     # turn1, turn2 to push turn0 into "old" (k=2).
     retained1 = [{"role": "assistant", "content": "<turn_summary>sum1</turn_summary>"}]
     retained2 = [{"role": "assistant", "content": "<turn_summary>sum2</turn_summary>"}]
-    hm.add_turn(mk_turn("民主党t0 Канаo0<reflect>refl0</reflect><turn_summary>sum0</turn_summary>", retained0))
-    hm.add_turn(mk_turn("民主党t1 Канаo1<turn_summary>sum1</turn_summary>", retained1))
-    hm.add_turn(mk_turn("民主党t2 Канаo2<turn_summary>sum2</turn_summary>", retained2))
+    hm.add_turn(mk_turn(retained0))
+    hm.add_turn(mk_turn(retained1))
+    hm.add_turn(mk_turn(retained2))
     inp = hm.build_input()
     # turn0 is old -> ONLY its S block's BARE inner text survives (tags stripped);
     # O ('final_output') and R must be gone.
@@ -138,15 +154,15 @@ def test_old_turn_no_S_keeps_O_and_A_as_plain_text():
     hm.set_prefix(SYS, KICK)
     # turn0: O+A+AR, no S. new_blocks has O, A, AR.
     nb0 = f"output0{TC}\n" + '{"name":"bash","arguments":{}}' + f"\n{TC_END}{AR}resp0{AR_END}"
+    _tc = chr(60) + "tool_call" + chr(62) + chr(10) + '{"name":"bash","arguments":{}}' + chr(10) + chr(60) + "/tool_call" + chr(62)
     retained0 = [
-        {"role": "assistant", "content": "output0", "tool_calls": [{"id": "c0"}]},
+        {"role": "assistant", "content": "output0" + _tc, "tool_calls": [{"id": "c0"}]},
         {"role": "tool", "content": "resp0"},
     ]
-    hm.add_turn(mk_turn(nb0, retained0))
+    hm.add_turn(mk_turn(retained0))
     # turn1, turn2 with S, to push turn0 into "old".
     for i in (1, 2):
         hm.add_turn(mk_turn(
-            f"o{i}<turn_summary>sum{i}</turn_summary>",
             [{"role": "assistant", "content": f"<turn_summary>sum{i}</turn_summary>"}],
         ))
     inp = hm.build_input()
@@ -177,7 +193,7 @@ def test_recent_turn_no_S_keeps_O_A_AR():
         {"role": "assistant", "content": "output0", "tool_calls": [{"id": "c0"}]},
         {"role": "tool", "content": "resp0"},
     ]
-    hm.add_turn(mk_turn("民主党t0 Канаoutput0", retained))  # no S
+    hm.add_turn(mk_turn(retained))  # no S
     inp = hm.build_input()
     contents = [m.get("content", "") for m in inp]
     assert "output0" in contents
@@ -194,7 +210,7 @@ def test_T_R_never_in_input():
     # retained messages must already be T/R-stripped (the agent strips them);
     # but verify build_input doesn't introduce any T/R-bearing content.
     retained = [{"role": "assistant", "content": "<turn_summary>sum0</turn_summary>"}]
-    hm.add_turn(mk_turn("民主党t0 Канаoutput0<turn_summary>sum0</turn_summary>", retained))
+    hm.add_turn(mk_turn(retained))
     inp = hm.build_input()
     for m in inp:
         c = m.get("content", "") or ""
@@ -211,8 +227,8 @@ def test_feedback_in_position_after_turn_blocks():
     hm.set_prefix(SYS, KICK)
     r0 = [{"role": "assistant", "content": "<turn_summary>sum0</turn_summary>"}]
     r1 = [{"role": "assistant", "content": "<turn_summary>sum1</turn_summary>"}]
-    hm.add_turn(mk_turn("民主党t0 Канаoutput0<turn_summary>sum0</turn_summary>", r0, feedback="FB0"))
-    hm.add_turn(mk_turn("民主党t1 Канаoutput1<turn_summary>sum1</turn_summary>", r1, feedback="FB1"))
+    hm.add_turn(mk_turn(r0, feedback="FB0"))
+    hm.add_turn(mk_turn(r1, feedback="FB1"))
     inp = hm.build_input()
     # Expected order: SYS, KICK, sum0, FB0, sum1, FB1
     assert inp[2]["content"] == "<turn_summary>sum0</turn_summary>"
@@ -238,8 +254,8 @@ def test_stage1_compresses_when_over_budget():
         {"role": "tool", "content": "resp1"},
         {"role": "assistant", "content": "<turn_summary>sum1</turn_summary>"},
     ]
-    hm.add_turn(mk_turn("民主党t0 Канаoutput0<turn_summary>sum0</turn_summary>", r0, feedback="FB0"))
-    hm.add_turn(mk_turn("民主党t1 Канаoutput1<turn_summary>sum1</turn_summary>", r1, feedback="FB1"))
+    hm.add_turn(mk_turn(r0, feedback="FB0"))
+    hm.add_turn(mk_turn(r1, feedback="FB1"))
     inp = hm.build_input()
     # stage1 collapses recent turn1's O/A/AR away, keeping only S + feedbacks.
     contents = [m.get("content", "") for m in inp]
@@ -258,7 +274,7 @@ class FakeCompressor:
         self.called = False
     async def summarize(self, system, kickoff, feedbacks, s_blocks):
         self.called = True
-        return f"<turn_summary>folded {len(s_blocks)} summaries</turn_summary>"
+        return f"folded {len(s_blocks)} summaries"
 
 
 def test_stage2_invokes_compressor():
@@ -266,19 +282,19 @@ def test_stage2_invokes_compressor():
     hm = HistoryManager(FakeCounter(), compressor=comp, k=1, hard_limit=30, compression_margin=0)
     hm.set_prefix(SYS, KICK)
     r0 = [{"role": "assistant", "content": "<turn_summary>sum0</turn_summary>"}]
-    hm.add_turn(mk_turn("民主党t0 Канаoutput0<turn_summary>sum0</turn_summary>", r0, feedback="FB0"))
+    hm.add_turn(mk_turn(r0, feedback="FB0"))
     inp = hm.build_input()
     assert comp.called
     # Result is system + single folded summary
     assert inp[0] == SYS
-    assert inp[1]["content"].startswith("<turn_summary>folded")
+    assert inp[1]["content"].startswith("folded")
 
 
 def test_hard_boundary_raises():
     hm = HistoryManager(FakeCounter(), compressor=FakeCompressor(), k=1, hard_limit=15, compression_margin=0)
     hm.set_prefix(SYS, KICK)
     r0 = [{"role": "assistant", "content": "<turn_summary>sum0</turn_summary>"}]
-    hm.add_turn(mk_turn("民主党t0 Канаoutput0<turn_summary>sum0</turn_summary>", r0, feedback="FB0"))
+    hm.add_turn(mk_turn(r0, feedback="FB0"))
     # system+kickoff+FB0 = 3 messages = 30 tokens > 15 hard_limit
     with pytest.raises(InfeasibleContextError):
         hm.build_input()
@@ -287,8 +303,7 @@ def test_hard_boundary_raises():
 def test_reset_clears():
     hm = HistoryManager(FakeCounter(), k=3)
     hm.set_prefix(SYS, KICK)
-    hm.add_turn(mk_turn("民主党t0 Канаoutput0<turn_summary>sum0</turn_summary>",
-                        [{"role": "assistant", "content": "<turn_summary>sum0</turn_summary>"}]))
+    hm.add_turn(mk_turn([{"role": "assistant", "content": "<turn_summary>sum0</turn_summary>"}]))
     hm.reset()
     assert hm.num_turns == 0
     inp = hm.build_input()

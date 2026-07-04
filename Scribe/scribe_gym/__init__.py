@@ -18,7 +18,7 @@ from .runner import ScribeRunner
 from .step_expander import compute_loss_mask, expand_turn
 from .tool_calling_env import ToolCallingScribeEnv
 from .tool_env import LinuxWorkspaceEnv
-from .turn_record import Step, TurnRecord
+from .turn_record import Step, StepRecord, TurnRecord
 
 __all__ = [
     "Compressor",
@@ -32,6 +32,7 @@ __all__ = [
     "ScribeEnv",
     "ScribeRunner",
     "Step",
+    "StepRecord",
     "ThreadPoolScribeMultiEnv",
     "ToolCallingScribeEnv",
     "TurnRecord",
