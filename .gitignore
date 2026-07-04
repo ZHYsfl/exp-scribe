@@ -11,3 +11,5 @@ __pycache__/
 .claude/
 
 qwen3-1.7b/
+
+qwen2.5-0.5b-instruct/
