@@ -637,13 +637,25 @@ REWARD11
 the metrics(MULTI-DIMENSIONAL REWARD PREVENTS HACKING)
 （**ALL THE METRICS ARE JUST FOCUED ON THIS TURN'S NEW BLOCKS,NOT THE INPUT BLOCKS**）:
 
-1.the reward of the final step.
+1.the reward of the final step. It is the product of three factors:
+   (a) **answer correctness** — 1.0 if the submitted answer matches the right answer, else 0.0;
+   (b) **natural termination bonus** — the turn must end with a final non-tool LLM call that produces O+R+S. If the turn ends by hitting `max_steps` (`truncated=True`) or by a tool-call step, this factor is 0.0;
+   (c) **truncated penalty** — if the turn is truncated by the step limit before natural termination, apply an additional penalty (e.g. -0.2).
+   In short, only a correct answer that is produced by a clean final non-tool step can receive the full final-step reward.
 
-2.the submit tool call times in the rollout blocks of this turn.(check if it's 1)
+2.the tool usage quality in the rollout blocks of this turn:
+   (a) **submit count** — submit must be called exactly once per turn;
+   (b) **repeated identical failed tool calls are penalized** — if a tool call with the **same function name AND the same arguments** is called again after it already failed in an earlier step of the same turn, each repetition incurs a small penalty (e.g. -0.1). "Same" means an exact match on both `name` and normalized `arguments` (e.g. `json.dumps(args, sort_keys=True)`). A tool call counts as "failed" if its tool result has `status != "success"` (for bash, `exit_code != 0`).
+   The submit penalty and the repeated-failure penalty are summed and clamped to keep the total reward non-negative.
 
 3.the length of the steps used.(computed by the number of A,keep the metric 1 the same level while make metric 3 as lower as possible)
 
-4.the format correctness(this metric focuses on if the turn have think,output,tool_call,tool_response,reflect,turn_summary block,if reflect are the second to last block,if the turn_summary are the last block,if the any data of the turn is and how much is invalid(see our code what the invalid is),etc.)
+4.the format correctness. This metric checks:
+   (a) the turn contains the expected block types: think, output, tool_call, tool_response, reflect, turn_summary;
+   (b) in the final non-tool step, reflect is the second-to-last block and turn_summary is the last block;
+   (c) **<reflect> and <turn_summary> appear only in the final step** — any R/S block in a non-final step is a format error;
+   (d) **the final non-tool step must contain NO tool_calls**: an assistant message that mixes <reflect>/<turn_summary> with tool_call(s) is invalid, because R+S must be plain text;
+   (e) how much of the turn's parsed data is invalid (see the code's invalid detection).
 
 5.the total tokens rollouted out in this turn(namely rollout blocks,include think,output,tool_call,reflect and turn_summary block,exclude the tool_response block.This metric is larger,the reward is lower,but should not effect reward so much)
 
