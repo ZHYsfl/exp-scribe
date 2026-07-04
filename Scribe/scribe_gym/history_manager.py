@@ -147,54 +147,42 @@ class HistoryManager:
         return self._output_action_only_messages(turn)
 
     def _summary_only_messages(self, turn: TurnRecord) -> List[Dict[str, Any]]:
-        """Old turn with S: keep ONLY the S block's BARE inner text as the
-        assistant message content (no <turn_summary> tags in the message —
-        message content is what the LLM sees; S tags are a block-protocol
-        concern). The final assistant message of a turn carries O+R+S
-        concatenated; we parse it, take the TURN_SUMMARY block, strip its tags,
-        and emit one plain-text assistant message."""
+        """Old turn with S: keep ONLY the S block as the assistant message
+        content, **with its <turn_summary> tags intact**. The final assistant
+        message of a turn carries O+R+S concatenated; we parse it, drop O and R,
+        and emit one assistant message whose content is the tagged S block."""
         out: List[Dict[str, Any]] = []
         for m in turn.retained_messages:
-            if m.get("role") == "assistant" and not m.get("tool_calls"):
-                content = m.get("content") or ""
-                blocks, _ = parse_scribe_blocks(content)
-                summary_blocks = [
-                    b for b in blocks if b.type == ScribeBlockType.TURN_SUMMARY
-                ]
-                if summary_blocks:
-                    new_msg = dict(m)
-                    new_msg["content"] = "\n".join(
-                        _strip_all_scribe_tags(b.content) for b in summary_blocks
-                    )
-                    out.append(new_msg)
+            if m.get("role") != "assistant":
+                continue
+            content = m.get("content") or ""
+            blocks, _ = parse_scribe_blocks(content)
+            summary_blocks = [
+                b for b in blocks if b.type == ScribeBlockType.TURN_SUMMARY
+            ]
+            if summary_blocks:
+                out.append({
+                    "role": "assistant",
+                    "content": "".join(b.content for b in summary_blocks),
+                })
+                break
         return out
 
     def _output_action_only_messages(self, turn: TurnRecord) -> List[Dict[str, Any]]:
-        """Special-case fallback: old turn with NO S block -> synthesize an S
-        block from O+A (spec: "preserve O&A blocks instead when this turn is
-        old enough to just need to preserve S").
+        """Special-case fallback: old turn with NO S block -> keep O+A as the
+        turn's preserved memory (spec: "preserve O&A blocks instead when this
+        turn is old enough to just need to preserve S").
 
-        Two layers, kept distinct:
-          - BLOCK layer: this turn is represented by ONE TURN_SUMMARY block
-            whose content carries the <turn_summary>...</turn_summary> tags.
-          - MESSAGE layer: the assistant message content is the BARE inner
-            text (no <turn_summary> tags) — message content is what the LLM
-            sees, and S tags are a block-protocol concern, not a message one.
-
-        The inner text is built by stripping ALL scribe tags from each O and A
-        block's content (so no nested <tool_call>/tool_call> tags survive — they
-        would break parsing and re-introduce tool-call structure), then
-        joining O and A pieces with '\n' separators."""
+        The result is ONE assistant message whose content is the O blocks (bare
+        text) and the A blocks (with their <tool_call> tags) joined by '\n'.
+        Keeping the tags makes block boundaries explicit."""
         inner = "\n".join(
-            _strip_all_scribe_tags(b.content)
+            b.content
             for b in turn.new_blocks
             if b.type in (ScribeBlockType.OUTPUT, ScribeBlockType.TOOL_CALL)
         )
         if not inner:
             return []
-        # Message content: bare inner text (no <turn_summary> wrapper).
-        # (The block-layer TURN_SUMMARY with tags is constructed where blocks
-        # are needed for training data; here we only build the LLM message.)
         return [{"role": "assistant", "content": inner}]
 
     # -- compression (turn-level, atomic) ---------------------------------

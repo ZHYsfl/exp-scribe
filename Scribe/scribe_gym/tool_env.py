@@ -116,7 +116,7 @@ class LinuxWorkspaceEnv(ToolCallingScribeEnv):
             self._step_count += 1
         obs, reward, terminated, truncated, info = await super().astep(action)
 
-        if self._step_count >= self.max_steps and not terminated and not self._submitted:
+        if self._step_count >= self.max_steps and not terminated:
             truncated = True
         return obs, reward, terminated, truncated, info
 

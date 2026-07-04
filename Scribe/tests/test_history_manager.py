@@ -103,10 +103,9 @@ def test_old_turn_collapses_to_summary_only():
         ]
         hm.add_turn(mk_turn(retained))
     inp = hm.build_input()
-    # turn0 is old -> only its summary's BARE inner text (tags stripped), NOT output0/resp0
+    # turn0 is old -> only its summary block (tags KEPT), NOT output0/resp0
     contents = [m.get("content", "") for m in inp]
-    assert "sum0" in contents
-    assert "<turn_summary>sum0</turn_summary>" not in contents  # tags stripped in message
+    assert "<turn_summary>sum0</turn_summary>" in contents
     assert "output0" not in contents
     assert "resp0" not in contents
     # turn3 (recent) keeps output3/resp3 (recent = raw retained, not stripped)
@@ -117,7 +116,8 @@ def test_old_turn_collapses_to_summary_only():
 def test_old_turn_strips_O_and_R_keeps_only_S():
     """The final assistant message of a turn carries O+R+S concatenated in
     one content string. An old turn must keep ONLY S — O and R must be
-    stripped, not the whole O+R+S message kept verbatim."""
+    stripped, not the whole O+R+S message kept verbatim. The S block keeps
+    its <turn_summary> tags."""
     hm = HistoryManager(FakeCounter(), k=2)
     hm.set_prefix(SYS, KICK)
     # turn0's final message has O + R + S in one content (realistic shape).
@@ -133,19 +133,18 @@ def test_old_turn_strips_O_and_R_keeps_only_S():
     hm.add_turn(mk_turn(retained1))
     hm.add_turn(mk_turn(retained2))
     inp = hm.build_input()
-    # turn0 is old -> ONLY its S block's BARE inner text survives (tags stripped);
-    # O ('final_output') and R must be gone.
+    # turn0 is old -> ONLY its S block survives (tags KEPT); O and R are gone.
     contents = [m.get("content", "") for m in inp]
-    assert "sum0" in contents
-    assert "<turn_summary>sum0</turn_summary>" not in contents  # tags stripped in old turn
+    assert "<turn_summary>sum0</turn_summary>" in contents
     assert "final_output" not in contents   # O stripped
     assert "refl0" not in contents           # R stripped
     assert "<reflect>refl0</reflect>" not in contents
 
 
-def test_old_turn_no_S_keeps_O_and_A_as_plain_text():
-    """Old turn with no S: O+A are rendered as ONE plain-text assistant
-    message (O+A 'as S'). No tool_calls, no AR (resp) — those are dropped."""
+def test_old_turn_no_S_keeps_O_and_A_with_tags():
+    """Old turn with no S: keep O+A as the turn's preserved memory. O blocks
+    stay bare text; A blocks keep their <tool_call> tags so block boundaries
+    remain explicit. No tool_calls array, no AR."""
     TC = chr(60) + "tool_call" + chr(62)
     TC_END = chr(60) + "/tool_call" + chr(62)
     AR = chr(60) + "tool_response" + chr(62)
@@ -166,20 +165,19 @@ def test_old_turn_no_S_keeps_O_and_A_as_plain_text():
             [{"role": "assistant", "content": f"<turn_summary>sum{i}</turn_summary>"}],
         ))
     inp = hm.build_input()
-    # turn0 old + no S -> one plain-text assistant message whose content is the
-    # BARE inner text of O+A (all scribe tags stripped), joined by newline.
+    # turn0 old + no S -> one assistant message whose content is O+A with A's
+    # <tool_call> tags kept (O is bare text). AR (resp0) is dropped.
     turn0_msgs = [m for m in inp if "output0" in (m.get("content") or "")]
     assert len(turn0_msgs) == 1, f"expected 1 O+A msg for turn0, got {turn0_msgs}"
     msg = turn0_msgs[0]
     assert msg["role"] == "assistant"
     assert not msg.get("tool_calls"), "O+A fallback must not carry tool_calls"
-    # Message content has NO scribe tags (bare inner text only).
-    TC = chr(60) + "tool_call" + chr(62)
-    TS = chr(60) + "turn_summary" + chr(62)
-    assert TS not in msg["content"]
-    assert TC not in msg["content"]
     assert "output0" in msg["content"]
-    # The A block's JSON arguments survive as bare text (tags stripped).
+    # A block's JSON arguments survive inside <tool_call> tags.
+    TC = chr(60) + "tool_call" + chr(62)
+    TC_END = chr(60) + "/tool_call" + chr(62)
+    assert TC in msg["content"]
+    assert TC_END in msg["content"]
     assert '"name":"bash"' in msg["content"]
     # AR (resp0) must NOT appear anywhere in the input.
     all_contents = [m.get("content", "") for m in inp]
@@ -214,8 +212,10 @@ def test_T_R_never_in_input():
     inp = hm.build_input()
     for m in inp:
         c = m.get("content", "") or ""
-        assert "民主党" not in c
+        assert "<think>" not in c
+        assert "</think>" not in c
         assert "<reflect>" not in c
+        assert "</reflect>" not in c
 
 
 # ---------------------------------------------------------------------------
@@ -261,9 +261,8 @@ def test_stage1_compresses_when_over_budget():
     contents = [m.get("content", "") for m in inp]
     assert "output1" not in contents  # recent turn also collapsed under stage1
     assert "resp1" not in contents
-    # S kept as BARE inner text (tags stripped), not the raw <turn_summary> msg.
-    assert "sum1" in contents
-    assert "<turn_summary>sum1</turn_summary>" not in contents
+    # S kept with its <turn_summary> tags.
+    assert "<turn_summary>sum1</turn_summary>" in contents
     # feedbacks preserved
     assert "FB0" in contents
     assert "FB1" in contents
@@ -274,7 +273,7 @@ class FakeCompressor:
         self.called = False
     async def summarize(self, system, kickoff, feedbacks, s_blocks):
         self.called = True
-        return f"folded {len(s_blocks)} summaries"
+        return f"<turn_summary>folded {len(s_blocks)} summaries</turn_summary>"
 
 
 def test_stage2_invokes_compressor():
@@ -287,7 +286,7 @@ def test_stage2_invokes_compressor():
     assert comp.called
     # Result is system + single folded summary
     assert inp[0] == SYS
-    assert inp[1]["content"].startswith("folded")
+    assert inp[1]["content"].startswith("<turn_summary>folded")
 
 
 def test_hard_boundary_raises():

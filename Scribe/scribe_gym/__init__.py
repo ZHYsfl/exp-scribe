@@ -4,6 +4,7 @@ from .helpers import (
     build_tool_messages,
     extract_tool_calls,
     message_to_scribe_blocks,
+    strip_think_reflect,
     tool_calls_to_action,
 )
 from .history_manager import HistoryManager, InfeasibleContextError
@@ -33,6 +34,7 @@ __all__ = [
     "ScribeRunner",
     "Step",
     "StepRecord",
+    "strip_think_reflect",
     "ThreadPoolScribeMultiEnv",
     "ToolCallingScribeEnv",
     "TurnRecord",

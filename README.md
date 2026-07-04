@@ -11,14 +11,36 @@ Our infra now can collect the rollout data,in threshold mode we can stop once th
 ## First ：the context engineering of each turn:
 
 Every LLM response follows this strict tag order. For convenience,we use T to stand for the think block,A to stand for the tool_call block,O to stand for the output block,R to stand for the reflect block,S to stand for the turn_summary block and AR to stand for the tool_response block.A turn's rollout usually is a
-list[T/O/(list[A]+list[AR])]+R+S  structure.(**Note!in list[T/O/(list[A]+list[AR])] the actual rollout's input is always excluding T&R block because they are disposible!there we use list[T/O/(list[A]+list[AR])] because we show all the rollout blocks this turn generated and these infos are important when training.**)A step is a llm call.(actually,only tool call make next step **in a turn**.)
-Each turn stores its input messages(list[Dict]),its new and rollout blocks(list[ScribeBlocks]) and its reward(int,the reward of a turn is equal to the reward of the last step in this turn.The reward of most steps in this turn are 0,the reward of a step is real when this step has no tool calls and the last step for this step is just right call the submit tool,so this step can judge the answer to give the metric 1.).
+list[T/O/(list[A]+list[AR])]+R+S  structure.(**Note!in list[T/O/(list[A]+list[AR])] the actual rollout's input is always excluding T&R block because they are disposible!there we use list[T/O/(list[A]+list[AR])] because we show all the rollout blocks this turn generated and these infos are important when training.**)**A step is one LLM call within a turn.** A tool-call response triggers the next LLM call (i.e. the next step); the final non-tool LLM call ends the turn and produces O+R+S. So a turn with N tool calls has N+1 steps.
+Each turn stores its input messages(list[Dict]),its new and rollout blocks(list[ScribeBlocks]) and its reward(int,the reward of a turn is equal to the reward of the last step in this turn.The reward of most steps in this turn are 0,the reward of a step is real only for the final non-tool step,because only that step can judge whether the submitted answer is correct.).
+
+### Block tags vs. message content
+
+SCRIBE blocks are marked by explicit XML-style tags, **except** OUTPUT blocks which are bare text:
+
+- `<think>...</think>` = THINK (T)
+- `<tool_call>...</tool_call>` = TOOL_CALL (A)
+- `<tool_response>...</tool_response>` = TOOL_RESPONSE (AR)
+- `<reflect>...</reflect>` = REFLECT (R)
+- `<turn_summary>...</turn_summary>` = TURN_SUMMARY (S)
+- OUTPUT (O) has **no tags**.
+
+A block and the OpenAI message that carries it are two different layers:
+
+- **Block layer** (used for training/rollout): tags are always preserved so the parser can split the stream into `ScribeBlock`s.
+- **Message layer** (what the LLM actually reads in the next call):
+  - `<think>` and `<reflect>` are **never** present in any future input; they are disposable the moment they are generated.
+  - `<turn_summary>` is preserved with its tag in **recent** turns and also in **old** turns after compression. Keeping the tag makes block boundaries explicit.
+  - `<tool_call>` is preserved with its tag whenever an old turn without S is reduced to O+A fallback.
+  - OUTPUT is always bare text.
+  - TOOL_CALL is carried by OpenAI's `tool_calls` field when the message also has tool calls; otherwise it may appear as a tagged block in `content`.
+  - TOOL_RESPONSE is carried by `role="tool"` messages; the chat template renders them with `<tool_response>` tags, but the raw message content is bare.
 
 History Compression rule:
 
-1.Disposable T&R blocks: The T and R blocks are both disposable,next rollout(next step,note:next step!not next turn but step!that means once T&R blocks are generated,next llm call the input blocks have already not included T&R blocks.) they will disappear in input blocks.
+1.Disposable T&R blocks: T and R blocks are disposable. Once generated, they are stripped before the next LLM call (next step) within the turn, and they never appear in future turns' inputs.
 
-2.The turns before the recent k(default k=3) turns only preserve the S block.
+2.The turns before the recent k(default k=3) turns only preserve the S block (with its `<turn_summary>` tags intact).
 
 3.A turn's rollout is atomic,so when the llm rollouts in a turn and suddenly the input tokens neer the limit(>limit-small_number),compression will not be triggered temporarily.(this is a trade off for gambling the turn is not too long to make the llm's context crash,cause the loop engineering is a long horizon task but each turn is not so long,as each turn is improving a little in the former turns,maybe just the first turn is a big turn.However,the first turn's tokens use is hard to exceed the 1M context of sota llm nowadays,so in a word,the trade off for the atomic turn's rollout is reasonable.the output of a model has max_output_limit,if we set the compression_limit-small_num 600k(<<1M),the system will be safe in most times.)The discipline is all about turn-level(not intra-turn level):The whole input blocks' tokens nears limit:Compression is triggered automatically **before rollout**. Two sets must be kept distinct:
 
@@ -27,15 +49,18 @@ History Compression rule:
   - **Stage 1 (collect S blocks):** only the input blocks are touched; first user prompt + turn-feedbacks are preserved verbatim.
   - **Stage 2 (sota-LLM compression, triggered when the S-block sequence still nears the limit):** the LLM input INCLUDES the first user prompt and turn-feedbacks (see the explicit "the first user prompt and turn-feedbacks are included!" below) — they get folded into the single `<turn_summary>` output. Only the system prompt stays verbatim through both stages.
 
-If the whole-input-context token count nears the limit, we compress **until it no longer nears the limit**, then proceed to rollout. This turn finally stores the compressed input and its new and rollout blocks and its reward. The compression is firstly collecting all the S block in the input blocks as the compression result(new input blocks),the first user prompt and turn-feedback and the system prompt are ignored,then judge the length of the new input blocks(S block sequence),if the sequence's tokens nears limit again,use sota llm to do a compression(the first user prompt and turn-feedbacks are included!) and use <turn_summary>\nThe Output Of llm\n</turn_summary> as the new input block and compression results. This one block's tokens should be guaranteed that they don't near the limit; if the sota llm output still exceeds the limit, retry the llm compression (the retry/backoff mechanism of the sota llm is decoupled from SCRIBE) until the single block fits.
+If the whole-input-context token count nears the limit, we compress **until it no longer nears the limit**, then proceed to rollout. This turn finally stores the compressed input and its new and rollout blocks and its reward. The compression is firstly collecting all the S block in the input blocks as the compression result(new input blocks),the first user prompt and turn-feedback and the system prompt are ignored,then judge the length of the new input blocks(S block sequence),if the sequence's tokens nears limit again,use sota llm to do a compression(the first user prompt and turn-feedbacks are included!). The compressor returns JSON `{"summary": "string"}` and is validated to be exactly one `<turn_summary>...</turn_summary>` block; that block becomes the new compressed input. This one block's tokens should be guaranteed that they don't near the limit; if the sota llm output still exceeds the limit, retry the llm compression (the retry/backoff mechanism of the sota llm is decoupled from SCRIBE) until the single block fits.
 
 **Hard boundary:** if the incompressible prefix — system prompt + first user prompt + all turn-feedbacks, with every input block already compressed away to nothing — still exceeds the limit on its own, compression cannot help. In that case SCRIBE raises an error (the trajectory config is infeasible: the preserved-verbatim parts alone overflow the context window).
 
-if the turn's new block has no S block,that means this turn the llm's rollout format is wrong,when this turn need to only save the S block in context,just save O and A block instead.This is a special case,the below examples and statements all suppose the S block will be generated rightly in every turn.but if this special scene happens,you know you need to preserve O&A blocks instead when this turn is old enough to just need to preserve S block.And recent turns that do not have the S block just preserve O/A/AR blocks.
+if the turn's new block has no S block,that means this turn the llm's rollout format is wrong,when this turn need to only save the S block in context,just save O and A blocks instead (O as bare text, A with its `<tool_call>` tags).This is a special case,the below examples and statements all suppose the S block will be generated rightly in every turn.but if this special scene happens,you know you need to preserve O&A blocks instead when this turn is old enough to just need to preserve S block.And recent turns that do not have the S block just preserve O/A/AR blocks.
 
 for instance:
 
 ```text
+In all examples below, S denotes the full <turn_summary>...</turn_summary> block (tags preserved),
+and A denotes the full <tool_call>...</tool_call> block (tags preserved), even when written as single letters.
+
 if k=3,max_turns=15
 
 turn0:
@@ -698,6 +723,12 @@ list[Step]
 Step:
 input:list[Dict]
 output:list[ScribeBlock]
+
+In the step-level examples below, `O A AR` is an abstract block-level shorthand:
+the actual `input` is a list of OpenAI messages (assistant message with OUTPUT +
+tool_calls for A, followed by tool-role messages for AR). T/R are stripped from
+the assistant message content before appending, but A is carried by the
+`tool_calls` field, not by tags in `content`.
 
 for instance:
 

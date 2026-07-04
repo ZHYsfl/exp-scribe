@@ -47,6 +47,10 @@ def _find_next_valid_pair(
 
         content = response[content_start:end]
 
+        # SCRIBE blocks are non-nesting: a THINK/REFLECT/TURN_SUMMARY/
+        # TOOL_RESPONSE block's inner text must not contain another scribe tag.
+        # (A model may *mention* a tag in free OUTPUT text, but never inside
+        # these wrapped blocks.) Reject nested tags as malformed.
         if block_type in (
             ScribeBlockType.THINK,
             ScribeBlockType.REFLECT,

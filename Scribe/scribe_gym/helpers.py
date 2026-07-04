@@ -45,9 +45,32 @@ def extract_tool_calls(blocks: List[ScribeBlock]) -> List[Dict[str, Any]]:
     ]
 
 
+def strip_think_reflect(message: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove THINK/REFLECT blocks from an assistant message's content.
+
+    Tool messages and non-assistant messages pass through unchanged.
+    tool_calls are preserved (ids intact). This is a pure function so it can
+    be reused by any component that needs to strip disposable reasoning blocks
+    before appending an assistant message to the context.
+    """
+    if message.get("role") != "assistant":
+        return dict(message)
+    content = message.get("content") or ""
+    if not content:
+        return dict(message)
+    from .parsers import render_scribe_blocks
+
+    blocks, _ = parse_scribe_blocks(content)
+    kept = [b for b in blocks if b.type not in (ScribeBlockType.THINK, ScribeBlockType.REFLECT)]
+    new = dict(message)
+    new["content"] = render_scribe_blocks(kept)
+    return new
+
+
 __all__ = [
     "build_tool_messages",
     "extract_tool_calls",
     "message_to_scribe_blocks",
+    "strip_think_reflect",
     "tool_calls_to_action",
 ]

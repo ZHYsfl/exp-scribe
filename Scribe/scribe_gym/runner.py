@@ -42,10 +42,29 @@ class ScribeRunner:
             if result is None:
                 continue
             if result.stop_run:
+                self._finalize_current_turn(result)
                 break
+            self._finalize_current_turn(result)
             if result.feedback is not None:
-                observations.append({"role": "user", "content": result.feedback})
+                # SCRIBE mode: feedback lives in the history_manager (set in
+                # finalize); do NOT append to observations (would duplicate).
+                # Plain ReAct: append to observations as before.
+                hm = getattr(self.agent, "history_manager", None)
+                if hm is None:
+                    observations.append({"role": "user", "content": result.feedback})
         return observations
+
+    def _finalize_current_turn(self, result) -> None:
+        """Hand the just-ended turn to the history_manager (no-op in ReAct).
+        Reward comes from the last trajectory step (TurnResult carries only
+        stop_run/feedback, not reward)."""
+        finalize = getattr(self.agent, "finalize_turn", None)
+        if finalize is None:
+            return
+        reward = 0.0
+        if self.agent.trajectory:
+            reward = self.agent.trajectory[-1].get("reward", 0.0)
+        finalize(reward, result.feedback if result else None)
 
     async def reset(
         self,
@@ -55,7 +74,20 @@ class ScribeRunner:
         obs, info = self.agent.env.reset(seed=seed, options=options)
         self.agent.trajectory.clear()
         self._best_reward = float("-inf")
-        return self._build_initial_observations(obs)
+        messages = self._build_initial_observations(obs)
+        # Seed the history_manager prefix (system + kickoff) for a fresh episode.
+        hm = getattr(self.agent, "history_manager", None)
+        if hm is not None:
+            hm.reset()
+            system_msg = messages[0] if messages and messages[0].get("role") == "system" else None
+            kickoff_msg = None
+            for m in messages:
+                if m.get("role") == "user":
+                    kickoff_msg = m
+                    break
+            if system_msg is not None and kickoff_msg is not None:
+                hm.set_prefix(system_msg, kickoff_msg)
+        return messages
 
     def _build_system_prompt(self, task_description: Optional[str] = None) -> str:
         # Tools are NOT baked into the system content here. The server injects
