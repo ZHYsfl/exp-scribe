@@ -645,8 +645,7 @@ the metrics(MULTI-DIMENSIONAL REWARD PREVENTS HACKING)
 
 2.the tool usage quality in the rollout blocks of this turn:
    (a) **submit count** — submit must be called exactly once per turn;
-   (b) **repeated identical failed tool calls are penalized** — if a tool call with the **same function name AND the same arguments** is called again after it already failed in an earlier step of the same turn, each repetition incurs a small penalty (e.g. -0.1). "Same" means an exact match on both `name` and normalized `arguments` (e.g. `json.dumps(args, sort_keys=True)`). A tool call counts as "failed" if its tool result has `status != "success"` (for bash, `exit_code != 0`).
-   The submit penalty and the repeated-failure penalty are summed and clamped to keep the total reward non-negative.
+   (b) **parallel identical tool calls in a single LLM call are penalized** — if an assistant message contains multiple tool_calls with the **same function name AND the same arguments**, each duplicated call incurs a penalty (e.g. -0.2 per duplicated call). "Same" means an exact match on both `name` and normalized `arguments` (e.g. `json.dumps(args, sort_keys=True)`). Cross-step repetitions are NOT penalized, because the environment state may have changed between steps (e.g. run → edit → run the same command again).
 
 3.the length of the steps used.(computed by the number of A,keep the metric 1 the same level while make metric 3 as lower as possible)
 
@@ -655,7 +654,9 @@ the metrics(MULTI-DIMENSIONAL REWARD PREVENTS HACKING)
    (b) in the final non-tool step, reflect is the second-to-last block and turn_summary is the last block;
    (c) **<reflect> and <turn_summary> appear only in the final step** — any R/S block in a non-final step is a format error;
    (d) **the final non-tool step must contain NO tool_calls**: an assistant message that mixes <reflect>/<turn_summary> with tool_call(s) is invalid, because R+S must be plain text;
-   (e) how much of the turn's parsed data is invalid (see the code's invalid detection).
+   (e) **only the agreed-upon SCRIBE tags are allowed** — any tag other than `<think>`, `<tool_call>`, `<tool_response>`, `<reflect>`, and `<turn_summary>` is invalid. Examples of invalid tags include `<submit>`, `<bash>`, `<action>`, `<plan>`, etc.;
+   (f) **R+S may only appear after submit has been called in this turn** — a turn that ends with R+S but never called submit is invalid;
+   (g) how much of the turn's parsed data is invalid (see the code's invalid detection).
 
 5.the total tokens rollouted out in this turn(namely rollout blocks,include think,output,tool_call,reflect and turn_summary block,exclude the tool_response block.This metric is larger,the reward is lower,but should not effect reward so much)
 
