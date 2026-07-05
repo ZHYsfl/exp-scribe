@@ -29,6 +29,13 @@ class FakeCounter:
     def count_observations(self, observations):
         return len(observations) * 10
 
+    def count(self, text):
+        return len(text)
+
+    def encode(self, text):
+        # deterministic pseudo-token ids (one per char) for set/n-gram metrics
+        return [ord(ch) for ch in text]
+
 
 class FakeMsg:
     def __init__(self, content, tool_calls=None):
@@ -112,6 +119,7 @@ async def run_episode():
         config=LLMConfig(api_key="x", model="m", base_url="u"),
         env=env,
         history_manager=hm,
+        token_counter=FakeCounter(),
     )
     agent.client = FakeClient([
         # turn0: bash, submit WRONG answer (99), final text -> reward 0, feedback, next turn

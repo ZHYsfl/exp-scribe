@@ -639,7 +639,7 @@ the metrics(MULTI-DIMENSIONAL REWARD PREVENTS HACKING)
 
 1. the reward of the final step. It is the product of three factors:
    (a) **answer correctness** — 1.0 if the submitted answer matches the right answer, else 0.0;
-   (b) **natural termination bonus** — the turn must end with a final non-tool LLM call that produces O+R+S. If the turn ends by hitting `max_steps` (`truncated=True`) or by a tool-call step, this factor is 0.0;
+   (b) **natural termination bonus** — the turn must end with a final non-tool LLM call (i.e. `terminated=True` and `done_reason=="no_tool_call"`). If the turn ends by hitting `max_steps` (`truncated=True`) or by a tool-call step, this factor is 0.0. Block-level format (O/R/S presence/order) is intentionally handled by metric 4, not here, so metric 1 stays orthogonal for ablations;
    (c) **truncated penalty** — if the turn is truncated by the step limit before natural termination, apply an additional penalty (e.g. -0.2).
    In short, only a correct answer that is produced by a clean final non-tool step can receive the full final-step reward.
 
@@ -655,7 +655,7 @@ the metrics(MULTI-DIMENSIONAL REWARD PREVENTS HACKING)
    (c) **<reflect> and <turn_summary> appear only in the final step** — any R/S block in a non-final step is a format error;
    (d) **the final non-tool step must contain NO tool_calls**: an assistant message that mixes <reflect>/<turn_summary> with tool_call(s) is invalid, because R+S must be plain text;
    (e) **only the agreed-upon SCRIBE tags are allowed** — any tag other than `<think>`, `<tool_call>`, `<tool_response>`, `<reflect>`, and `<turn_summary>` is invalid. Examples of invalid tags include `<submit>`, `<bash>`, `<action>`, `<plan>`, etc.;
-   (f) **R+S may only appear after submit has been called in this turn** — a turn that ends with R+S but never called submit is invalid;
+   (f) **R+S may only appear after submit has been called in this turn** — a turn that ends with R+S but never called submit, or where R/S appears in the same step as or before the submit call, is invalid;
    (g) how much of the turn's parsed data is invalid (see the code's invalid detection).
 
 5. the total tokens rollouted out in this turn(namely rollout blocks,include think,output,tool_call,reflect and turn_summary block,exclude the tool_response block.This metric is larger,the reward is lower,but should not effect reward so much)
@@ -702,7 +702,7 @@ model-generated blocks — tool_call (structured JSON, naturally repetitive) and
 the model's responsibility) are excluded.
 the metric is low,that means the block does not repeat itself,otherwise the block loops.
 
-**Note：the 7,8,9,10,11 metric will be given completely in one llm call.**
+**Note：the 7,8,9,10 metric will be given completely in one llm call.** (Metric 11 is a pure statistical metric and stays out of this judge call — see its line "no LLM judge needed".)
 
 **Note：the reflect block is a cot process for model to let the latter turn_summary get higher reward.**
 

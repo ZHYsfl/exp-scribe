@@ -18,6 +18,10 @@ class TokenCounter(ABC):
     def count_observations(self, observations: list[dict]) -> int:
         """Sum of tokens across all observation messages."""
 
+    @abstractmethod
+    def encode(self, text: str) -> list[int]:
+        """Token ids for a single text string (for set/n-gram metrics)."""
+
 
 class DeepSeekTokenCounter(TokenCounter):
     """Token counter backed by the DeepSeek V3 HuggingFace tokenizer.
@@ -64,3 +68,7 @@ class DeepSeekTokenCounter(TokenCounter):
             if content:
                 total += self.count(str(content))
         return total
+
+    def encode(self, text: str) -> list[int]:
+        self._lazy_load()
+        return list(self._tokenizer.encode(text))  # type: ignore[union-attr]

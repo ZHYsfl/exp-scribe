@@ -82,6 +82,9 @@ class TurnRecord:
     step_records: List[StepRecord]
     reward: float = 0.0
     feedback: Optional[str] = None
+    # Full 13-metric breakdown for debugging/ablation (set by finalize_turn
+    # after compute_turn_reward). Optional to avoid importing rewards here.
+    reward_breakdown: Optional[Any] = None
 
     # ---- derived views (single source of truth = step_records) -------------
 

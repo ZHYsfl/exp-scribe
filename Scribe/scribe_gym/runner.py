@@ -56,15 +56,14 @@ class ScribeRunner:
 
     def _finalize_current_turn(self, result) -> None:
         """Hand the just-ended turn to the history_manager (no-op in ReAct).
-        Reward comes from the last trajectory step (TurnResult carries only
-        stop_run/feedback, not reward)."""
+        The 13-metric turn reward is computed INSIDE finalize_turn from the
+        freshly-built TurnRecord (block contents) + the env trajectory's
+        terminated/truncated/answer info, so the runner does NOT pass a scalar
+        reward here — only the stop_run/feedback signaling."""
         finalize = getattr(self.agent, "finalize_turn", None)
         if finalize is None:
             return
-        reward = 0.0
-        if self.agent.trajectory:
-            reward = self.agent.trajectory[-1].get("reward", 0.0)
-        finalize(reward, result.feedback if result else None)
+        finalize(result.feedback if result else None)
 
     async def reset(
         self,

@@ -15,6 +15,16 @@ from .parsers import (
     parse_scribe_blocks,
     render_scribe_blocks,
 )
+from .rewards import (
+    DEFAULT_TURN_REWARD_CONFIG,
+    Judge,
+    SummaryJudgeScores,
+    TurnOutcome,
+    TurnRewardBreakdown,
+    TurnRewardConfig,
+    build_judge_prompt,
+    compute_turn_reward,
+)
 from .runner import ScribeRunner
 from .step_expander import compute_loss_mask, expand_turn
 from .tool_calling_env import ToolCallingScribeEnv
@@ -26,6 +36,7 @@ __all__ = [
     "GymBackedAgent",
     "HistoryManager",
     "InfeasibleContextError",
+    "Judge",
     "LLMSummarizerCompressor",
     "LinuxWorkspaceEnv",
     "ScribeBlock",
@@ -34,16 +45,22 @@ __all__ = [
     "ScribeRunner",
     "Step",
     "StepRecord",
-    "strip_think_reflect",
+    "SummaryJudgeScores",
     "ThreadPoolScribeMultiEnv",
     "ToolCallingScribeEnv",
+    "TurnOutcome",
     "TurnRecord",
+    "TurnRewardBreakdown",
+    "TurnRewardConfig",
+    "build_judge_prompt",
     "build_tool_messages",
     "compute_loss_mask",
+    "compute_turn_reward",
     "expand_turn",
     "extract_tool_calls",
     "message_to_scribe_blocks",
     "parse_scribe_blocks",
     "render_scribe_blocks",
+    "strip_think_reflect",
     "tool_calls_to_action",
 ]
