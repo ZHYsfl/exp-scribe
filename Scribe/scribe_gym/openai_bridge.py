@@ -53,6 +53,7 @@ class GymBackedAgent(Agent):
         judge_max_retries: int = 2,
         judge_temperature: float = 0.0,
         judge_semaphore: Optional[Any] = None,
+        llm_backend: Optional[Any] = None,
     ):
         # SCRIBE mode does not use the base class's tool-error retry prompt.
         # Tool error content is already present in the tool response messages;
@@ -93,6 +94,10 @@ class GymBackedAgent(Agent):
                 semaphore=judge_semaphore,
             )
             self.judge = build_structured_judge(judge_gen)
+        # Optional injected backend (e.g. local vLLM engine) replaces the default
+        # AsyncOpenAI client. The backend must expose ``chat.completions.create``.
+        if llm_backend is not None:
+            self.client = llm_backend
 
     def _get_tools(self) -> List[Dict[str, Any]]:
         return self.env.get_tools()

@@ -1,0 +1,8 @@
+# SFT training dependencies (Unsloth + TRL).
+unsloth
+unsloth-zoo
+trl
+datasets
+torch
+accelerate
+peft

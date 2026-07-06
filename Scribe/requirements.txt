@@ -1,4 +1,4 @@
-# Core dependencies for the SCRIBE training/runtime stack.
+# Core dependencies for the SCRIBE runtime (inference + data collection).
 openai
 pydantic
 jinja2
@@ -7,10 +7,3 @@ transformers
 python-dotenv
 pandas
 pyarrow
-# Training stack (unsloth + trl SFT)
-unsloth
-unsloth-zoo
-trl
-datasets
-torch
-vllm

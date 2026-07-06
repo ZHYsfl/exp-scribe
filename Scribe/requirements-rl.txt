@@ -1,0 +1,8 @@
+# RL training dependencies (TRL + vLLM + PEFT).
+trl
+vllm
+datasets
+torch
+accelerate
+peft
+numpy
