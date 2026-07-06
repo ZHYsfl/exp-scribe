@@ -24,10 +24,18 @@ def create_basic_linux_tools(workspace_root: str | Path = ".") -> list[Tool]:
             workdir = resolve(root, cwd)
         except ValueError as exc:
             return truncate(f"Cannot run the command because {exc}.")
+        if not workdir.exists():
+            try:
+                workdir.mkdir(parents=True, exist_ok=True)
+            except Exception as exc:
+                return truncate(
+                    f"Cannot run the command because the working directory "
+                    f"{workdir} does not exist and could not be created: {exc}."
+                )
         if not workdir.is_dir():
             return truncate(
                 f"Cannot run the command because the working directory "
-                f"is not a directory: {cwd}."
+                f"is not a directory: {workdir} (cwd={cwd!r})."
             )
 
         try:

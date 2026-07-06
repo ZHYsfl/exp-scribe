@@ -84,34 +84,38 @@ Judge = Callable[[str, str], Union[SummaryJudgeScores, Awaitable[SummaryJudgeSco
 
 @dataclass
 class TurnRewardConfig:
-    # weights
-    w1: float = 0.25   # answer + termination
-    w2: float = 0.10   # tool usage (submit + parallel dup)
-    w3: float = 0.05   # step length
-    w4: float = 0.15   # format
+    # weights: designed so that a "perfect" turn (correct answer, clean format,
+    # concise, good summary) scores close to 1.0, while each failure mode pulls
+    # the total down smoothly rather than clipping abruptly.
+    w1: float = 0.35   # answer + natural termination (dominant signal)
+    w2: float = 0.08   # tool usage (submit + parallel dup)
+    w3: float = 0.04   # step length
+    w4: float = 0.12   # format
     w5: float = 0.02   # rollout tokens
-    w6: float = 0.15   # token reuse ratio
-    w7: float = 0.05   # faithfulness (judge)
-    w8: float = 0.05   # direction neutrality (judge)
-    w9: float = 0.05    # turn focus (judge)
-    w10: float = 0.05  # fluency (judge)
+    w6: float = 0.10   # token reuse ratio
+    w7: float = 0.04   # faithfulness (judge)
+    w8: float = 0.04   # direction neutrality (judge)
+    w9: float = 0.04   # turn focus (judge)
+    w10: float = 0.04  # fluency (judge)
     w11: float = 0.03  # compression ratio
     w12: float = 0.03  # cross-block n-gram overlap
     w13: float = 0.02  # intra-block n-gram overlap
     # penalty magnitudes
     truncation_penalty: float = 0.20
-    submit_penalty: float = 0.20
-    parallel_dup_penalty: float = 0.20
-    # format violation penalties
-    fmt_missing_type: float = 0.20
-    fmt_bad_order: float = 0.20
-    fmt_rs_in_nonfinal: float = 0.30
-    fmt_tool_in_final: float = 0.30
-    fmt_rs_without_submit: float = 0.20
-    fmt_disallowed_tag: float = 0.30
-    fmt_invalid_share_weight: float = 0.30
-    # m5 rollout-token reference length (linear bridge -> [0,1])
-    rollout_token_ref: int = 1024
+    submit_penalty: float = 0.15
+    parallel_dup_penalty: float = 0.10
+    # format violation penalties (staircase: mild violations shave points,
+    # serious violations shave more, but a few minor issues don't collapse to 0)
+    fmt_missing_type: float = 0.08
+    fmt_bad_order: float = 0.12
+    fmt_rs_in_nonfinal: float = 0.15
+    fmt_tool_in_final: float = 0.15
+    fmt_rs_without_submit: float = 0.12
+    fmt_disallowed_tag: float = 0.18
+    fmt_invalid_share_weight: float = 0.20
+    # m5 rollout-token reference length. Default 8192 gives meaningful signal
+    # for concise turns without clamping normal rollouts to 0 immediately.
+    rollout_token_ref: int = 8192
     # n-gram size
     n_ngram: int = 4
     # judge default when judge is None
@@ -269,22 +273,24 @@ def metric_2(turn: TurnRecord, oc: TurnOutcome, cfg: TurnRewardConfig) -> float:
 
     README 2:
       2a submit count: submit must be called exactly once per turn.
-         ==1 -> +1.0; otherwise -cfg.submit_penalty per unit of deviation.
+         ==1 -> no penalty; otherwise -cfg.submit_penalty per unit of deviation.
       2b parallel identical tool calls: within ONE assistant message, two
          tool_calls with the same name AND normalized arguments (json.dumps,
          sort_keys=True) are duplicates. Each extra copy incurs
          -cfg.parallel_dup_penalty. Cross-step repetitions are NOT penalized
          (env state may have changed: run -> edit -> run).
-    Mechanism uses signed penalties, then affine-rescaled to [0,1] so the
-    RL-facing metric stays in spec range while preserving ordering.
+    Staircase: each mistake shaves a small fixed amount from 1.0. Multiple
+    mistakes accumulate linearly and the result is clamped to [0,1], so a turn
+    with a single extra submit or one duplicated call still gets partial credit
+    rather than collapsing to 0.
     """
     submit_count = oc.submit_count
 
     # 2a: submit exactly once
     if submit_count == 1:
-        m2a = 1.0
+        m2a_penalty = 0.0
     else:
-        m2a = 1.0 - cfg.submit_penalty * max(1, abs(submit_count - 1))
+        m2a_penalty = cfg.submit_penalty * max(1, abs(submit_count - 1))
 
     # 2b: parallel identical tool calls within ONE assistant message (cross-step NOT penalized)
     dup_count = 0
@@ -298,15 +304,9 @@ def metric_2(turn: TurnRecord, oc: TurnOutcome, cfg: TurnRewardConfig) -> float:
                 continue
             groups[key] = groups.get(key, 0) + 1
         dup_count += sum(c - 1 for c in groups.values() if c > 1)
-    m2b = -cfg.parallel_dup_penalty * dup_count
+    m2b_penalty = cfg.parallel_dup_penalty * dup_count
 
-    raw = m2a + m2b
-    # worst case: no submit and many dups; raw can go arbitrarily negative.
-    # rescale against the natural range [1 - submit_penalty - many_dups, 1].
-    # For a single-dup or single-submit-miss, the reference low is symmetric.
-    lo = min(1.0 - cfg.submit_penalty, 1.0 - cfg.parallel_dup_penalty, raw)
-    hi = 1.0
-    return _clamp((raw - lo) / (hi - lo), 0.0, 1.0)
+    return _clamp(1.0 - m2a_penalty - m2b_penalty, 0.0, 1.0)
 
 
 def metric_3(turn: TurnRecord, cfg: TurnRewardConfig) -> float:
@@ -411,20 +411,14 @@ def metric_5(turn: TurnRecord, counter, cfg: TurnRewardConfig) -> float:
     """Metric 5 — total tokens rolled out this turn.
 
     README 5: rollout blocks = T/O/A/R/S (exclude TOOL_RESPONSE). More tokens ->
-    lower reward, but should not dominate. Score = 1 - n/ref (ref=
-    cfg.rollout_token_ref), range [0,1]. Given a small weight by design.
-
-    Note: rollout_token_ref (default 1024) is just a conservative placeholder, NOT
-    an empirically tuned optimum — it's where the linear score hits 0. Real RL
-    rollouts are usually multiple-thousand tokens, so 1024 will clamp most
-    samples to 0 and wipe the signal. Tune ref to the batch's rollout-token
-    distribution (e.g. 4096) or switch to a softer 1 - n/(n+ref) decay once you
-    see real data. Shaping lives in cfg (rollout_token_ref = shape, w5 =
-    weight); both are open for tweaking without touching source.
+    lower reward, but should not dominate. We use a soft decay
+    ``score = ref / (n + ref)`` so the signal stays alive for normal-length
+    rollouts and never clamps abruptly to 0. Short rollouts score close to 1;
+    very long ones asymptote toward 0. Both are controlled via cfg.
     """
     n = sum(counter.count(b.content) for b in turn.rollout_blocks)
     ref = cfg.rollout_token_ref or 1
-    return _clamp(1.0 - n / ref, 0.0, 1.0)
+    return _clamp(ref / (n + ref), 0.0, 1.0)
 
 
 def metric_6(turn: TurnRecord, counter, cfg: TurnRewardConfig) -> float:

@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from ..llm_runtime import Tool
 from ..llm_runtime._tool_helpers import schema
@@ -30,6 +30,11 @@ class LinuxWorkspaceEnv(ToolCallingScribeEnv):
     ):
         self.task_description = task_description
         self.workspace_root = Path(workspace_root).resolve()
+        self.workspace_root.mkdir(parents=True, exist_ok=True)
+        if not self.workspace_root.is_dir():
+            raise NotADirectoryError(
+                f"LinuxWorkspaceEnv workspace_root is not a directory: {self.workspace_root}"
+            )
         self.max_steps = max_steps
         self.right_answer = right_answer
         # Reward shaping: penalize calling submit more than once within a single

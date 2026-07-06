@@ -209,13 +209,13 @@ def test_m4_all_expected_block_types():
     ])
     assert metric_4(perfect, _oc(submit_count=1), DEFAULT_TURN_REWARD_CONFIG) == 1.0
 
-    # missing think only: one type missing -> one penalty
+    # missing think only: one type missing -> one small penalty
     no_think = build_turn([
         ("tool", "o" + _tc("bash", {"command": "ls"}), "c0", "r"),
         ("tool", "o" + _tc("submit", {"answer": "42"}), "c1", "ok"),
         ("final", "o<reflect>rf</reflect><turn_summary>s</turn_summary>"),
     ])
-    assert metric_4(no_think, _oc(submit_count=1), DEFAULT_TURN_REWARD_CONFIG) == 0.8
+    assert metric_4(no_think, _oc(submit_count=1), DEFAULT_TURN_REWARD_CONFIG) == 0.92
 
     # missing output in a tool-only turn (no final step) -> multiple missing types
     tool_only = build_turn([
@@ -264,7 +264,9 @@ def test_m5_shorter_higher():
     long_t = build_turn([("final", "o" * 2000 + "<turn_summary>s</turn_summary>")])
     c = FakeCounter()
     cfg = DEFAULT_TURN_REWARD_CONFIG
-    assert metric_5(short, c, cfg) >= metric_5(long_t, c, cfg)
+    assert metric_5(short, c, cfg) > metric_5(long_t, c, cfg)
+    # soft decay: even a 2000-token rollout still has non-zero signal
+    assert metric_5(long_t, c, cfg) > 0.0
 
 
 # ---- metric 6: token reuse ----

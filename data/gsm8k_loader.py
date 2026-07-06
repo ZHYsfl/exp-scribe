@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 
-_DEFAULT_DATA_DIR = Path("/root/autodl-tmp/data/gsm8k")
+_DEFAULT_DATA_DIR = Path(__file__).resolve().parent / "gsm8k"
 
 
 def extract_right_answer(answer_text: str) -> Optional[str]:
@@ -29,7 +29,7 @@ def extract_right_answer(answer_text: str) -> Optional[str]:
 def load_gsm8k(
     split: str = "train",
     config: str = "main",
-    data_dir: str | Path = _DEFAULT_DATA_DIR,
+    data_dir: str | Path | None = None,
     limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Load GSM8K samples from local parquet.
@@ -37,13 +37,14 @@ def load_gsm8k(
     Args:
         split: "train" or "test".
         config: "main" or "socratic". We recommend "main" for SCRIBE training.
-        data_dir: Directory containing `{config}_{split}.parquet`.
+        data_dir: Directory containing `{config}_{split}.parquet`. Defaults to
+            the `data/gsm8k` folder next to this script.
         limit: If set, only return the first N samples.
 
     Returns:
         List of dicts with keys: task_id, task_description, right_answer, raw_answer.
     """
-    data_dir = Path(data_dir)
+    data_dir = Path(data_dir) if data_dir is not None else _DEFAULT_DATA_DIR
     path = data_dir / f"{config}_{split}.parquet"
     if not path.exists():
         raise FileNotFoundError(f"GSM8K parquet not found: {path}")
