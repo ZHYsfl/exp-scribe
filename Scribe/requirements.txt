@@ -7,4 +7,10 @@ transformers
 python-dotenv
 pandas
 pyarrow
-# vllm
+# Training stack (unsloth + trl SFT)
+unsloth
+unsloth-zoo
+trl
+datasets
+torch
+vllm
