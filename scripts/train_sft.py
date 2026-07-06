@@ -50,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model_name",
         type=str,
-        default="/home/zane/exp-scribe/qwen2.5-0.5b-instruct",
+        default="qwen2.5-0.5b-instruct",
         help="Unsloth-compatible model name or path",
     )
     parser.add_argument(
