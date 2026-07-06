@@ -17,10 +17,11 @@ penalties; the weighted sum is clamped to [0,1]. See README "Second" section.
 
 from __future__ import annotations
 
+import inspect
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from .parsers import ScribeBlock, ScribeBlockType, parse_scribe_blocks
 from .turn_record import TurnRecord
@@ -77,7 +78,8 @@ class SummaryJudgeScores:
 
 
 # A judge takes (ground_truth_text, summary_text) -> SummaryJudgeScores.
-Judge = Callable[[str, str], SummaryJudgeScores]
+# May be sync or async to support both unit tests and real LLM-as-judge calls.
+Judge = Callable[[str, str], Union[SummaryJudgeScores, Awaitable[SummaryJudgeScores]]]
 
 
 @dataclass
@@ -447,7 +449,7 @@ def metric_6(turn: TurnRecord, counter, cfg: TurnRewardConfig) -> float:
     return _clamp(len(s_set & oa_set) / len(oa_set), 0.0, 1.0)
 
 
-def metrics_7_10(
+async def metrics_7_10(
     turn: TurnRecord, judge: Optional[Judge], cfg: TurnRewardConfig
 ) -> Tuple[float, float, float, float, bool]:
     """Metrics 7-10 — LLM-judge summary qualities (returned from ONE judge call).
@@ -459,6 +461,9 @@ def metrics_7_10(
       metric 10 fluency          — natural & fluent (guards against keyword dumps).
     judge=None OR no summary -> four cfg.judge_default (0.5) and judge_used=False
     (keeps RL batching / unit tests unblocked). Returns (m7, m8, m9, m10, used).
+
+    The judge may be sync (unit tests) or async (real LLM backend); both paths
+    are supported without requiring callers to know which one they have.
     """
     s_text = _last_summary(turn)
     if judge is None or not s_text:
@@ -466,7 +471,11 @@ def metrics_7_10(
         return d, d, d, d, False
     gt = _ground_truth_text(turn)
     try:
-        sc = judge(gt, s_text)
+        raw = judge(gt, s_text)
+        if inspect.isawaitable(raw):
+            sc = await raw
+        else:
+            sc = raw  # type: ignore[assignment]
     except Exception:
         d = cfg.judge_default
         return d, d, d, d, False
@@ -585,7 +594,7 @@ def build_judge_prompt(ground_truth: str, summary: str) -> List[Dict[str, str]]:
 # aggregation
 # ---------------------------------------------------------------------------
 
-def compute_turn_reward(
+async def compute_turn_reward(
     turn: TurnRecord,
     config: Optional[TurnRewardConfig] = None,
     *,
@@ -620,7 +629,7 @@ def compute_turn_reward(
         from ..llm_runtime.token_counter import DeepSeekTokenCounter
         token_counter = DeepSeekTokenCounter()
 
-    m7, m8, m9, m10, judge_used = metrics_7_10(turn, judge, cfg)
+    m7, m8, m9, m10, judge_used = await metrics_7_10(turn, judge, cfg)
     bd = TurnRewardBreakdown(
         metric_1=metric_1(turn, outcome, cfg),
         metric_2=metric_2(turn, outcome, cfg),
@@ -641,11 +650,25 @@ def compute_turn_reward(
     return bd
 
 
+def build_structured_judge(generator: Any) -> Judge:
+    """Wrap a StructuredGenerator into a Judge for metrics 7-10.
+
+    The returned judge is async and suitable for parallel task execution.
+    generator must provide an async ``generate(messages, schema)`` method that
+    returns a SummaryJudgeScores-compatible object (e.g. StructuredGenerator).
+    """
+    async def judge(ground_truth: str, summary: str) -> SummaryJudgeScores:
+        msgs = build_judge_prompt(ground_truth, summary)
+        return await generator.generate(messages=msgs, schema=SummaryJudgeScores)
+
+    return judge
+
+
 __all__ = [
     "TurnRewardConfig", "TurnRewardBreakdown", "TurnOutcome",
     "SummaryJudgeScores", "Judge", "DEFAULT_TURN_REWARD_CONFIG",
-    "compute_turn_reward", "build_judge_prompt",
+    "compute_turn_reward", "build_judge_prompt", "build_structured_judge",
+    "metrics_7_10",
     "metric_1", "metric_2", "metric_3", "metric_4", "metric_5", "metric_6",
-    "metric_7", "metric_8", "metric_9", "metric_10", "metric_11",
-    "metric_12", "metric_13",
+    "metric_11", "metric_12", "metric_13",
 ]

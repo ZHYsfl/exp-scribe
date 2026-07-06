@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..llm_runtime import Agent, LLMConfig
+from ..llm_runtime import Agent, LLMConfig, StructuredGenerator
 
 from .helpers import (
     build_tool_messages,
@@ -14,6 +14,7 @@ from .rewards import (
     Judge,
     TurnOutcome,
     TurnRewardConfig,
+    build_structured_judge,
     compute_turn_reward,
 )
 from .tool_calling_env import ToolCallingScribeEnv
@@ -43,6 +44,10 @@ class GymBackedAgent(Agent):
         reward_config: Optional[TurnRewardConfig] = None,
         judge: Optional[Judge] = None,
         token_counter: Any = None,
+        enable_judge: bool = False,
+        judge_max_retries: int = 2,
+        judge_temperature: float = 0.0,
+        judge_semaphore: Optional[Any] = None,
     ):
         # SCRIBE mode does not use the base class's tool-error retry prompt.
         # Tool error content is already present in the tool response messages;
@@ -57,11 +62,22 @@ class GymBackedAgent(Agent):
         self.history_manager = history_manager
         # Per-turn step records (推理实况), populated by the SCRIBE chat loop.
         self._turn_step_records: List[StepRecord] = []
-        # 13-metric turn reward config + LLM-judge + token counter, injected so
-        # the runner/tests can wire them without touching env correctness logic.
+        # 13-metric turn reward config + token counter, injected so the runner/tests
+        # can wire them without touching env correctness logic.
         self.reward_config = reward_config or DEFAULT_TURN_REWARD_CONFIG
-        self.judge = judge
         self.token_counter = token_counter
+        # LLM-as-judge for metrics 7-10. Explicit judge wins; otherwise optionally
+        # auto-build one from the agent's own client/model for parallel tasks.
+        self.judge = judge
+        if self.judge is None and enable_judge:
+            judge_gen = StructuredGenerator(
+                client=self.client,
+                model=self.config.model,
+                max_retries=judge_max_retries,
+                temperature=judge_temperature,
+                semaphore=judge_semaphore,
+            )
+            self.judge = build_structured_judge(judge_gen)
 
     def _get_tools(self) -> List[Dict[str, Any]]:
         return self.env.get_tools()
@@ -126,7 +142,7 @@ class GymBackedAgent(Agent):
 
         return msgs
 
-    def finalize_turn(self, feedback: Optional[str]) -> Optional[TurnRecord]:
+    async def finalize_turn(self, feedback: Optional[str]) -> Optional[TurnRecord]:
         """Package this turn into a TurnRecord, compute the 13-metric turn
         reward FROM the record, then hand it to the history_manager. Called by
         ScribeRunner._evaluate_turn when a turn ends. No-op when no
@@ -147,17 +163,17 @@ class GymBackedAgent(Agent):
             reward=0.0,
             feedback=feedback,
         )
-        record.reward = self._compute_turn_reward(record)
+        record.reward = await self._compute_turn_reward(record)
         self.history_manager.add_turn(record)
         if feedback is not None:
             self.history_manager.set_feedback(self.history_manager.num_turns - 1, feedback)
         return record
 
-    def _compute_turn_reward(self, record: TurnRecord) -> float:
+    async def _compute_turn_reward(self, record: TurnRecord) -> float:
         """Build the TurnOutcome from the env trajectory + step records, compute
         the 13-metric reward, and return the scalar total."""
         oc = self._build_outcome(record)
-        breakdown = compute_turn_reward(
+        breakdown = await compute_turn_reward(
             record,
             self.reward_config,
             outcome=oc,

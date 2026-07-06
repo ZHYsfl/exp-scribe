@@ -87,7 +87,9 @@ async def main() -> None:
     )
 
     # 2. Agent: GymBackedAgent bridges the LLM's tool_calls to env.step.
-    agent = GymBackedAgent(config=config, env=env, debug=True)
+    # enable_judge=True wires metrics 7-10 to a second StructuredGenerator call
+    # using the same client/model (one LLM-as-judge call per turn).
+    agent = GymBackedAgent(config=config, env=env, debug=True, enable_judge=True)
 
     # 3. Runner: controls the episode (reward threshold / max turns / feedback).
     runner = ScribeRunner(

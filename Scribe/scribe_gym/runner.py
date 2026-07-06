@@ -42,9 +42,9 @@ class ScribeRunner:
             if result is None:
                 continue
             if result.stop_run:
-                self._finalize_current_turn(result)
+                await self._finalize_current_turn(result)
                 break
-            self._finalize_current_turn(result)
+            await self._finalize_current_turn(result)
             if result.feedback is not None:
                 # SCRIBE mode: feedback lives in the history_manager (set in
                 # finalize); do NOT append to observations (would duplicate).
@@ -54,7 +54,7 @@ class ScribeRunner:
                     observations.append({"role": "user", "content": result.feedback})
         return observations
 
-    def _finalize_current_turn(self, result) -> None:
+    async def _finalize_current_turn(self, result) -> None:
         """Hand the just-ended turn to the history_manager (no-op in ReAct).
         The 13-metric turn reward is computed INSIDE finalize_turn from the
         freshly-built TurnRecord (block contents) + the env trajectory's
@@ -63,7 +63,7 @@ class ScribeRunner:
         finalize = getattr(self.agent, "finalize_turn", None)
         if finalize is None:
             return
-        finalize(result.feedback if result else None)
+        await finalize(result.feedback if result else None)
 
     async def reset(
         self,

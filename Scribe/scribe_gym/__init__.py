@@ -23,6 +23,7 @@ from .rewards import (
     TurnRewardBreakdown,
     TurnRewardConfig,
     build_judge_prompt,
+    build_structured_judge,
     compute_turn_reward,
 )
 from .runner import ScribeRunner
@@ -53,6 +54,7 @@ __all__ = [
     "TurnRewardBreakdown",
     "TurnRewardConfig",
     "build_judge_prompt",
+    "build_structured_judge",
     "build_tool_messages",
     "compute_loss_mask",
     "compute_turn_reward",

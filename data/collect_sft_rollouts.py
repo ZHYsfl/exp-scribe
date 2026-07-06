@@ -84,6 +84,7 @@ async def collect_one(
     item: Dict[str, Any],
     max_steps: int = 5,
     max_turns: int = 3,
+    enable_judge: bool = False,
 ) -> List[Dict[str, Any]]:
     api_key = os.getenv("LLM_API_KEY", "")
     model = os.getenv("LLM_MODEL", "deepseek-v4-pro")
@@ -97,7 +98,10 @@ async def collect_one(
     env = make_gsm8k_env(item, workspace_root=ws_root, max_steps=max_steps)
     counter = DeepSeekTokenCounter()
     hm = HistoryManager(counter, k=2, hard_limit=4096, compression_margin=512)
-    agent = GymBackedAgent(config=cfg, env=env, history_manager=hm, debug=False)
+    agent = GymBackedAgent(
+        config=cfg, env=env, history_manager=hm, debug=False,
+        enable_judge=enable_judge,
+    )
     runner = ScribeRunner(
         agent=agent,
         system_prompt=SYSTEM_PROMPT,
@@ -130,10 +134,12 @@ async def main(
     max_steps: int = 5,
     max_turns: int = 3,
     output_path: str = "/root/autodl-tmp/data/gsm8k_sft_steps.jsonl",
+    enable_judge: bool = False,
 ):
     items = load_gsm8k("train", "main", limit=num_samples)
     print(f"Collecting SFT rollouts for {len(items)} GSM8K samples...")
     print(f"Teacher model: {os.getenv('LLM_MODEL', 'deepseek-v4-pro')}")
+    print(f"LLM-as-judge enabled: {enable_judge}")
     print(f"Output: {output_path}")
     print("=" * 70)
 
@@ -148,7 +154,8 @@ async def main(
             print(f"\n[{i}/{len(items)}] {item['task_id']}")
             try:
                 examples = await collect_one(
-                    item, max_steps=max_steps, max_turns=max_turns
+                    item, max_steps=max_steps, max_turns=max_turns,
+                    enable_judge=enable_judge,
                 )
                 for ex in examples:
                     f.write(json.dumps(ex, ensure_ascii=False) + "\n")
@@ -174,6 +181,8 @@ if __name__ == "__main__":
     parser.add_argument("--max_steps", type=int, default=5)
     parser.add_argument("--max_turns", type=int, default=3)
     parser.add_argument("--output", default="/root/autodl-tmp/data/gsm8k_sft_steps.jsonl")
+    parser.add_argument("--enable_judge", action="store_true",
+                        help="Enable LLM-as-judge for metrics 7-10 (extra API calls).")
     args = parser.parse_args()
 
     asyncio.run(main(
@@ -181,4 +190,5 @@ if __name__ == "__main__":
         max_steps=args.max_steps,
         max_turns=args.max_turns,
         output_path=args.output,
+        enable_judge=args.enable_judge,
     ))

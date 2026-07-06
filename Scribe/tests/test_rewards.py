@@ -8,6 +8,7 @@ on one metric for easy attribution.
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -284,14 +285,36 @@ def test_m6_no_reuse():
 def test_judge_injected():
     turn = build_turn([("final", "o<turn_summary>s</turn_summary>")])
     j = FakeJudge(SummaryJudgeScores(0.9, 0.8, 0.7, 0.6))
-    m7, m8, m9, m10, used = metrics_7_10(turn, j, DEFAULT_TURN_REWARD_CONFIG)
+    m7, m8, m9, m10, used = asyncio.run(
+        metrics_7_10(turn, j, DEFAULT_TURN_REWARD_CONFIG)
+    )
+    assert (m7, m8, m9, m10) == (0.9, 0.8, 0.7, 0.6)
+    assert used and j.calls == 1
+
+
+def test_judge_async_injected():
+    class AsyncFakeJudge:
+        def __init__(self, scores):
+            self._scores = scores
+            self.calls = 0
+        async def __call__(self, ground_truth, summary):
+            self.calls += 1
+            return self._scores
+
+    turn = build_turn([("final", "o<turn_summary>s</turn_summary>")])
+    j = AsyncFakeJudge(SummaryJudgeScores(0.9, 0.8, 0.7, 0.6))
+    m7, m8, m9, m10, used = asyncio.run(
+        metrics_7_10(turn, j, DEFAULT_TURN_REWARD_CONFIG)
+    )
     assert (m7, m8, m9, m10) == (0.9, 0.8, 0.7, 0.6)
     assert used and j.calls == 1
 
 
 def test_judge_none_defaults():
     turn = build_turn([("final", "o<turn_summary>s</turn_summary>")])
-    m7, m8, m9, m10, used = metrics_7_10(turn, None, DEFAULT_TURN_REWARD_CONFIG)
+    m7, m8, m9, m10, used = asyncio.run(
+        metrics_7_10(turn, None, DEFAULT_TURN_REWARD_CONFIG)
+    )
     assert not used
     assert (m7, m8, m9, m10) == (0.5, 0.5, 0.5, 0.5)
 
@@ -349,12 +372,13 @@ def test_m13_repetition_low():
 def test_compute_turn_reward_clamps_and_weights():
     turn = build_turn([
         ("tool", "<think>t</think>o" + _tc("bash", {"command": "ls"}), "c0", "r"),
+        ("tool", "o" + _tc("submit", {"answer": "42"}), "c1", "ok"),
         ("final", "<think>t2</think>o<reflect>rf</reflect><turn_summary>s</turn_summary>"),
     ])
-    bd = compute_turn_reward(
+    bd = asyncio.run(compute_turn_reward(
         turn, DEFAULT_TURN_REWARD_CONFIG,
         outcome=_oc(submit_count=1), judge=None, token_counter=FakeCounter(),
-    )
+    ))
     assert 0.0 <= bd.total <= 1.0
     assert not bd.judge_used
     ws = [DEFAULT_TURN_REWARD_CONFIG.w1, DEFAULT_TURN_REWARD_CONFIG.w2,
@@ -370,31 +394,31 @@ def test_compute_turn_reward_clamps_and_weights():
 def test_compute_turn_reward_judge_marks_used():
     turn = build_turn([("final", "o<turn_summary>s</turn_summary>")])
     j = FakeJudge(SummaryJudgeScores(1.0, 1.0, 1.0, 1.0))
-    bd = compute_turn_reward(
+    bd = asyncio.run(compute_turn_reward(
         turn, DEFAULT_TURN_REWARD_CONFIG,
         outcome=_oc(submit_count=1), judge=j, token_counter=FakeCounter(),
-    )
+    ))
     assert bd.judge_used
     assert bd.metric_7 == 1.0
 
 
 def test_compute_turn_reward_empty_turn():
     turn = TurnRecord(step_records=[])
-    bd = compute_turn_reward(
+    bd = asyncio.run(compute_turn_reward(
         turn, DEFAULT_TURN_REWARD_CONFIG,
         outcome=_oc(submit_count=0, terminated=False, done_reason=None, answer=None),
         token_counter=FakeCounter(),
-    )
+    ))
     assert bd.total == 0.0
 
 
 # ---- wiring sanity: TurnRecord.reward_breakdown settable ----
 def test_record_reward_breakdown_field():
     turn = build_turn([("final", "o<turn_summary>s</turn_summary>")])
-    bd = compute_turn_reward(
+    bd = asyncio.run(compute_turn_reward(
         turn, DEFAULT_TURN_REWARD_CONFIG,
         outcome=_oc(submit_count=1), token_counter=FakeCounter(),
-    )
+    ))
     turn.reward = bd.total
     turn.reward_breakdown = bd
     assert turn.reward == bd.total

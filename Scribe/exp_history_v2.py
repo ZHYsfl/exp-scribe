@@ -49,7 +49,7 @@ async def main():
     )
     counter = DeepSeekTokenCounter()
     hm = HistoryManager(counter, k=2, hard_limit=4096, compression_margin=512)
-    agent = GymBackedAgent(config=cfg, env=env, history_manager=hm, debug=False)
+    agent = GymBackedAgent(config=cfg, env=env, history_manager=hm, debug=False, enable_judge=True)
     runner = ScribeRunner(agent=agent, system_prompt=SYSTEM_PROMPT,
                           done_mode="threshold", reward_threshold=1.0, max_turns=3)
 
