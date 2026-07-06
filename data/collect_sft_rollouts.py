@@ -20,11 +20,11 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-sys.path.insert(0, str(Path("/root/autodl-tmp/Scribe").resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
 
-load_dotenv(Path("/root/autodl-tmp/Scribe/.env"), override=True)
+load_dotenv(Path(__file__).resolve().parent.parent / "Scribe" / ".env", override=True)
 
 from Scribe.llm_runtime import LLMConfig
 from Scribe.scribe_gym import (
@@ -133,10 +133,13 @@ async def main(
     num_samples: int = 20,
     max_steps: int = 5,
     max_turns: int = 3,
-    output_path: str = "/root/autodl-tmp/data/gsm8k_sft_steps.jsonl",
+    output_path: Optional[str] = None,
     enable_judge: bool = False,
 ):
     items = load_gsm8k("train", "main", limit=num_samples)
+    if output_path is None:
+        repo_root = Path(__file__).resolve().parent.parent
+        output_path = str(repo_root / "data" / "gsm8k_sft_steps.jsonl")
     print(f"Collecting SFT rollouts for {len(items)} GSM8K samples...")
     print(f"Teacher model: {os.getenv('LLM_MODEL', 'deepseek-v4-pro')}")
     print(f"LLM-as-judge enabled: {enable_judge}")
@@ -180,7 +183,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_samples", type=int, default=20)
     parser.add_argument("--max_steps", type=int, default=5)
     parser.add_argument("--max_turns", type=int, default=3)
-    parser.add_argument("--output", default="/root/autodl-tmp/data/gsm8k_sft_steps.jsonl")
+    parser.add_argument("--output", default=None,
+                        help="Output JSONL path (default: <repo-root>/data/gsm8k_sft_steps.jsonl).")
     parser.add_argument("--enable_judge", action="store_true",
                         help="Enable LLM-as-judge for metrics 7-10 (extra API calls).")
     args = parser.parse_args()

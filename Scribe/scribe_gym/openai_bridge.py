@@ -1,4 +1,9 @@
+import asyncio
+import os
+
 from typing import Any, Dict, List, Optional, Tuple
+
+from openai import AsyncOpenAI
 
 from ..llm_runtime import Agent, LLMConfig, StructuredGenerator
 
@@ -67,12 +72,22 @@ class GymBackedAgent(Agent):
         self.reward_config = reward_config or DEFAULT_TURN_REWARD_CONFIG
         self.token_counter = token_counter
         # LLM-as-judge for metrics 7-10. Explicit judge wins; otherwise optionally
-        # auto-build one from the agent's own client/model for parallel tasks.
+        # auto-build one for parallel tasks. Judge credentials default to the
+        # actor's client/model but can be overridden via JUDGE_* env vars.
         self.judge = judge
         if self.judge is None and enable_judge:
+            judge_api_key = os.getenv("JUDGE_API_KEY") or config.api_key
+            judge_base_url = os.getenv("JUDGE_BASE_URL") or config.base_url
+            judge_model = os.getenv("JUDGE_MODEL") or config.model
+            judge_client = AsyncOpenAI(
+                api_key=judge_api_key, base_url=judge_base_url
+            )
+            if judge_semaphore is None:
+                max_concurrent = int(os.getenv("JUDGE_MAX_CONCURRENT", "5"))
+                judge_semaphore = asyncio.Semaphore(max_concurrent)
             judge_gen = StructuredGenerator(
-                client=self.client,
-                model=self.config.model,
+                client=judge_client,
+                model=judge_model,
                 max_retries=judge_max_retries,
                 temperature=judge_temperature,
                 semaphore=judge_semaphore,

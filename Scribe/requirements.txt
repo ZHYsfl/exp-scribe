@@ -1,3 +1,8 @@
+# Core dependencies for the SCRIBE training/runtime stack.
 openai
 pydantic
-vllm
+jinja2
+tiktoken
+transformers
+python-dotenv
+# vllm
