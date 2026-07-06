@@ -20,6 +20,17 @@ from .tool_calling_env import ToolCallingScribeEnv
 from .turn_record import StepRecord, TurnRecord
 
 
+def _count_submit_calls(step_records: List[StepRecord]) -> int:
+    """Count submit tool calls across a turn's step records (by parsed name)."""
+    n = 0
+    for rec in step_records:
+        for b in rec.output_blocks:
+            p = getattr(b, "parsed", None)
+            if isinstance(p, dict) and p.get("name") == "submit":
+                n += 1
+    return n
+
+
 class GymBackedAgent(Agent):
     def __init__(
         self,
@@ -29,6 +40,9 @@ class GymBackedAgent(Agent):
         debug: bool = False,
         compressor: Any | None = None,
         history_manager: Optional[HistoryManager] = None,
+        reward_config: Optional[TurnRewardConfig] = None,
+        judge: Optional[Judge] = None,
+        token_counter: Any = None,
     ):
         # SCRIBE mode does not use the base class's tool-error retry prompt.
         # Tool error content is already present in the tool response messages;
@@ -43,6 +57,11 @@ class GymBackedAgent(Agent):
         self.history_manager = history_manager
         # Per-turn step records (推理实况), populated by the SCRIBE chat loop.
         self._turn_step_records: List[StepRecord] = []
+        # 13-metric turn reward config + LLM-judge + token counter, injected so
+        # the runner/tests can wire them without touching env correctness logic.
+        self.reward_config = reward_config or DEFAULT_TURN_REWARD_CONFIG
+        self.judge = judge
+        self.token_counter = token_counter
 
     def _get_tools(self) -> List[Dict[str, Any]]:
         return self.env.get_tools()
@@ -107,10 +126,17 @@ class GymBackedAgent(Agent):
 
         return msgs
 
-    def finalize_turn(self, reward: float, feedback: Optional[str]) -> Optional[TurnRecord]:
-        """Package this turn into a TurnRecord and hand it to the history_manager.
-        Called by ScribeRunner._evaluate_turn when a turn ends. No-op when no
+    def finalize_turn(self, feedback: Optional[str]) -> Optional[TurnRecord]:
+        """Package this turn into a TurnRecord, compute the 13-metric turn
+        reward FROM the record, then hand it to the history_manager. Called by
+        ScribeRunner._evaluate_turn when a turn ends. No-op when no
         history_manager is attached (plain ReAct).
+
+        Order matters: the record is built FIRST (so its parsed blocks are
+        available), THEN the 13-metric reward is computed from those blocks +
+        the env trajectory's termination/answer info, and set onto
+        record.reward. This is the inverse of the old (reward-then-record)
+        order, which had nothing to compute the reward from.
 
         step_records is the single source of truth; input / new_blocks /
         rollout_blocks / retained_messages are all derived via properties."""
@@ -118,13 +144,47 @@ class GymBackedAgent(Agent):
             return None
         record = TurnRecord(
             step_records=list(self._turn_step_records),
-            reward=reward,
+            reward=0.0,
             feedback=feedback,
         )
+        record.reward = self._compute_turn_reward(record)
         self.history_manager.add_turn(record)
         if feedback is not None:
             self.history_manager.set_feedback(self.history_manager.num_turns - 1, feedback)
         return record
+
+    def _compute_turn_reward(self, record: TurnRecord) -> float:
+        """Build the TurnOutcome from the env trajectory + step records, compute
+        the 13-metric reward, and return the scalar total."""
+        oc = self._build_outcome(record)
+        breakdown = compute_turn_reward(
+            record,
+            self.reward_config,
+            outcome=oc,
+            judge=self.judge,
+            token_counter=self.token_counter,
+        )
+        record.reward_breakdown = breakdown  # for debugging / ablation
+        return breakdown.total
+
+    def _build_outcome(self, record: TurnRecord) -> TurnOutcome:
+        """Lift termination/answer info off the last env trajectory entry."""
+        info: Dict[str, Any] = {}
+        truncated = False
+        terminated = False
+        if self.trajectory:
+            last = self.trajectory[-1]
+            info = last.get("info", {}) or {}
+            truncated = bool(last.get("truncated", False))
+            terminated = bool(last.get("terminated", False))
+        return TurnOutcome(
+            truncated=truncated,
+            terminated=terminated,
+            done_reason=info.get("done_reason"),
+            answer=info.get("answer"),
+            right_answer=info.get("right_answer"),
+            submit_count=_count_submit_calls(record.step_records),
+        )
 
     async def _env_step(
         self, action: Any
