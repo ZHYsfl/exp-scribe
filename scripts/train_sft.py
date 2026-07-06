@@ -35,8 +35,6 @@ from typing import Any, Dict, List
 
 import torch
 from datasets import Dataset
-from transformers import TrainingArguments
-from trl import SFTTrainer
 
 
 def parse_args() -> argparse.Namespace:
@@ -180,6 +178,9 @@ def main():
             "  pip install unsloth unsloth-zoo trl datasets"
         ) from exc
 
+    # Import TRL after Unsloth so that Unsloth's patches are applied first.
+    from trl import SFTConfig, SFTTrainer
+
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=args.model_name,
         max_seq_length=args.max_seq_length,
@@ -226,19 +227,28 @@ def main():
     dataset = Dataset.from_dict({"messages": conversations})
 
     # Use the model's chat template to format conversations. Unsloth/TRL SFT
-    # expects a formatting function that returns the final text.
+    # expects a formatting function that returns a list of processed strings.
+    # We accept both single examples (as used by TRL's internal smoke test) and
+    # batched inputs, but always return a list.
     def formatting_func(sample) -> List[str]:
+        messages = sample["messages"]
+        if isinstance(messages, list) and messages and isinstance(messages[0], list):
+            return [
+                tokenizer.apply_chat_template(
+                    msgs, tokenize=False, add_generation_prompt=False
+                )
+                for msgs in messages
+            ]
         return [
             tokenizer.apply_chat_template(
-                msgs, tokenize=False, add_generation_prompt=False
+                messages, tokenize=False, add_generation_prompt=False
             )
-            for msgs in sample["messages"]
         ]
 
-    train_args = TrainingArguments(
+    train_args = SFTConfig(
         output_dir=args.output_dir,
-        num_train_epochs=args.num_train_epochs if args.max_steps <= 0 else None,
-        max_steps=args.max_steps if args.max_steps > 0 else None,
+        num_train_epochs=args.num_train_epochs if args.max_steps <= 0 else 1.0,
+        max_steps=args.max_steps if args.max_steps > 0 else -1,
         per_device_train_batch_size=args.per_device_train_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
@@ -254,15 +264,15 @@ def main():
         seed=args.seed,
         report_to="none",
         remove_unused_columns=False,
+        max_length=args.max_seq_length,
     )
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=dataset,
         formatting_func=formatting_func,
         args=train_args,
-        max_seq_length=args.max_seq_length,
     )
 
     trainer.train()

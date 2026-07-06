@@ -13,3 +13,7 @@ __pycache__/
 qwen3-1.7b/
 
 qwen2.5-0.5b-instruct/
+
+unsloth_compiled_cache/
+
+outputs/
