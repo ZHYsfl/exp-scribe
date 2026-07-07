@@ -102,6 +102,34 @@ class GymBackedAgent(Agent):
     def _get_tools(self) -> List[Dict[str, Any]]:
         return self.env.get_tools()
 
+    async def _call_llm(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[str] = None,
+    ) -> Any:
+        """Route the LLM call to the configured backend.
+
+        If the backend is a ``VLLMBackend`` with plain-text tool mode enabled,
+        use its wrapper so vLLM does not see ``tools=``/``tool_choice=``."""
+        from .vllm_backend import VLLMBackend
+
+        if isinstance(self.client, VLLMBackend):
+            return await self.client.chat_completions_create(
+                model=model,
+                messages=messages,
+                tools=tools,
+                tool_choice=tool_choice,
+            )
+        return await self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=tools,
+            tool_choice=tool_choice,
+        )
+
     async def chat(self, observations: list[dict]) -> list[dict]:
         # Hot-swap: no history_manager -> plain ReAct via the base Agent.chat.
         if self.history_manager is None:
@@ -120,16 +148,17 @@ class GymBackedAgent(Agent):
         msgs = list(turn_input)
         while True:
             print("\033[94mThinking...\033[0m")
-            response = await self.client.chat.completions.create(
+            response = await self._call_llm(
                 model=self.config.model,
                 messages=msgs,
                 tools=self._get_tools(),
                 tool_choice="auto",
             )
-            print(response.choices[0].message.content)
-            message = response.choices[0].message.model_dump()
+            choice = response.choices[0]
+            print(choice.message.content or "")
+            message = choice.message.model_dump()
             _, output_blocks, _ = message_to_scribe_blocks(message)
-            finish_reason = response.choices[0].finish_reason
+            is_tool_step = bool(message.get("tool_calls"))
 
             # Capture this step's faithful record (input = what model saw, which
             # is T/R-stripped; output = raw blocks the model generated, WITH T).
@@ -141,7 +170,7 @@ class GymBackedAgent(Agent):
             )
             self._turn_step_records.append(rec)
 
-            if finish_reason != "tool_calls":
+            if not is_tool_step:
                 # Final non-tool step: step the env (records trajectory), then
                 # append the (T/R-stripped) final message — it carries S, which
                 # future turns must see. End the turn.

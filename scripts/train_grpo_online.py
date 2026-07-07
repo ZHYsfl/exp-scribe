@@ -338,13 +338,14 @@ async def collect_group_rollouts(
     group_size: int,
     tokenizer: Any,
     args: argparse.Namespace,
-    max_concurrent: int = 4,
+    max_concurrent: int = 8,
 ) -> List[List[TurnRecord]]:
     """Sample ``group_size`` trajectories for each task in ``items``.
 
     Rollouts are parallelized with a semaphore to bound concurrent load on the
-    vLLM server. If you see Hermes tool-parser "Already borrowed" errors,
-    lower ``max_concurrent`` to 1.
+    vLLM server. When the backend uses plain-text tool parsing it avoids the
+    Hermes parser concurrency bug; in that case ``max_concurrent`` can be
+    raised. If you still see ``Already borrowed`` errors, lower it.
     """
     semaphore = asyncio.Semaphore(max_concurrent)
 
