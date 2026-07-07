@@ -263,7 +263,7 @@ def load_models(base_model_path: str, sft_lora_path: str):
         device_map="cuda:0" if torch.cuda.is_available() else None,
         trust_remote_code=True,
     )
-    policy = PeftModel.from_pretrained(base, sft_lora_path)
+    policy = PeftModel.from_pretrained(base, sft_lora_path, is_trainable=True)
     policy.print_trainable_parameters()
 
     # Reference model: same weights, frozen.
