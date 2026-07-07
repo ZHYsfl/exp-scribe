@@ -19,11 +19,11 @@ setup for online RL:
 3. After each GRPO update, call ``backend.update_weights(adapter_path)`` to load
    the new LoRA adapter into the running server.
 
-The backend exposes the same minimal OpenAI-compatible interface that
-``GymBackedAgent.chat`` expects:
+The backend inherits ``AsyncOpenAI`` and is used exactly like the OpenAI client
+inside ``GymBackedAgent.chat``:
 
     response = await backend.chat.completions.create(
-        model=...,
+        model=backend.lora_name,
         messages=[...],
         tools=[...],
         tool_choice="auto",
@@ -32,8 +32,6 @@ The backend exposes the same minimal OpenAI-compatible interface that
 """
 
 from __future__ import annotations
-
-from typing import Any, Dict, List, Optional
 
 from openai import AsyncOpenAI
 

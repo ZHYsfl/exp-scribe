@@ -28,7 +28,6 @@ import argparse
 import asyncio
 import copy
 import json
-import os
 import random
 import sys
 from collections import defaultdict
@@ -244,7 +243,7 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def load_models(base_model_path: str, sft_lora_path: str):
+def load_models(base_model_path: str, sft_lora_path: str, bf16: bool = False, fp16: bool = False):
     """Load base model + SFT LoRA and a frozen reference model."""
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -253,8 +252,13 @@ def load_models(base_model_path: str, sft_lora_path: str):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    # Use explicit dtype flags if provided; otherwise auto-detect.
     dtype = torch.float32
-    if torch.cuda.is_bf16_supported():
+    if fp16:
+        dtype = torch.float16
+    elif bf16:
+        dtype = torch.bfloat16
+    elif torch.cuda.is_bf16_supported():
         dtype = torch.bfloat16
 
     base = AutoModelForCausalLM.from_pretrained(
@@ -437,7 +441,9 @@ def main():
         json.dump(vars(args), f, indent=2)
 
     print("Loading models...")
-    policy, ref_model, tokenizer = load_models(args.base_model, args.sft_lora_path)
+    policy, ref_model, tokenizer = load_models(
+        args.base_model, args.sft_lora_path, bf16=args.bf16, fp16=args.fp16
+    )
 
     optimizer = torch.optim.AdamW(
         [p for p in policy.parameters() if p.requires_grad],
@@ -477,12 +483,10 @@ def main():
 
         # 3. Compute rewards and advantages per task group.
         groups: Dict[str, List[List[TurnRecord]]] = defaultdict(list)
-        item_by_task: Dict[str, Dict[str, Any]] = {}
         for item, turns in zip(
             [it for it in items for _ in range(args.group_size)], trajectories
         ):
             groups[item["task_id"]].append(turns)
-            item_by_task[item["task_id"]] = item
 
         all_samples: List[Dict[str, Any]] = []
         all_rewards: List[float] = []

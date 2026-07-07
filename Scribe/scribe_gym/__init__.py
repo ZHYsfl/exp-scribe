@@ -17,7 +17,6 @@ from .parsers import (
     render_scribe_blocks,
 )
 from .rewards import (
-    DEFAULT_TURN_REWARD_CONFIG,
     Judge,
     SummaryJudgeScores,
     TurnOutcome,
@@ -78,5 +77,4 @@ __all__ = [
     "render_scribe_blocks",
     "strip_think_reflect",
     "tool_calls_to_action",
-    "trajectory_to_completion_text",
 ]

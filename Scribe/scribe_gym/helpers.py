@@ -4,6 +4,9 @@ from .chat_template import assistant_message_to_scribe, tool_calls_to_scribe
 from .parsers import ScribeBlock, ScribeBlockType, parse_scribe_blocks
 
 
+_T_R_TYPES = (ScribeBlockType.THINK, ScribeBlockType.REFLECT)
+
+
 def tool_calls_to_action(tool_calls: List[Any]) -> str:
     return tool_calls_to_scribe(tool_calls)
 
@@ -61,7 +64,7 @@ def strip_think_reflect(message: Dict[str, Any]) -> Dict[str, Any]:
     from .parsers import render_scribe_blocks
 
     blocks, _ = parse_scribe_blocks(content)
-    kept = [b for b in blocks if b.type not in (ScribeBlockType.THINK, ScribeBlockType.REFLECT)]
+    kept = [b for b in blocks if b.type not in _T_R_TYPES]
     new = dict(message)
     new["content"] = render_scribe_blocks(kept)
     return new

@@ -20,7 +20,7 @@ non-zero credit. AR/prompt/system/feedback/tool tokens are masked out.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -46,6 +46,8 @@ def compute_group_advantages(
     arr = np.array(rewards, dtype=np.float32)
     mean = arr.mean()
     std = arr.std()
+    if std < eps or len(arr) < 2:
+        return [0.0 for _ in rewards]
     return ((arr - mean) / (std + eps)).tolist()
 
 
