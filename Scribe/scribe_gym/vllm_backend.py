@@ -75,25 +75,35 @@ def _make_tool_call_id() -> str:
 
 
 def _tools_to_prompt_schema(tools: Optional[List[Dict[str, Any]]]) -> str:
-    """Render OpenAI-style tool definitions as plain text for the prompt."""
+    """Render OpenAI-style tool definitions as plain text for the prompt.
+
+    This text is byte-for-byte identical to the tool schema appended by the
+    Qwen2.5-Instruct chat template (see ``tokenizer_config.json``
+    ``chat_template``) when ``tools`` is provided. The caller is responsible
+    for prepending the leading ``\\n\\n`` when appending it to an existing
+    system prompt.
+    """
     if not tools:
         return ""
-    lines = ["You have access to the following tools:"]
+    lines = [
+        "# Tools",
+        "",
+        "You may call one or more functions to assist with the user query.",
+        "",
+        "You are provided with function signatures within <tools></tools> XML tags:",
+        "<tools>",
+    ]
     for tool in tools:
-        func = tool.get("function", {})
-        name = func.get("name", "")
-        desc = func.get("description", "")
-        params = json.dumps(func.get("parameters", {}), ensure_ascii=False)
-        lines.append(f"- {name}: {desc}")
-        lines.append(f"  Parameters: {params}")
-    lines.append("")
-    lines.append(
-        "To call a tool, output exactly one or more lines of the form:"
-    )
-    lines.append(
-        '<tool_call>{"name": "<tool_name>", "arguments": {<args>}}</tool_call>'
-    )
-    lines.append("")
+        lines.append(json.dumps(tool, ensure_ascii=False))
+    lines.extend([
+        "</tools>",
+        "",
+        "For each function call, return a json object with function name and "
+        "arguments within <tool_call></tool_call> XML tags:",
+        "<tool_call>",
+        '{"name": <function-name>, "arguments": <args-json-object>}',
+        "</tool_call>",
+    ])
     return "\n".join(lines)
 
 
@@ -158,6 +168,9 @@ class VLLMBackend(AsyncOpenAI):
         plain_text_tools: If True, do not send ``tools=`` to vLLM; inject tool
             schemas into the system prompt and parse ``<tool_call>`` blocks
             locally. This avoids the Hermes parser concurrency bug.
+        tool_schema_renderer: Optional callable ``(tools) -> str`` that renders
+            OpenAI-style tool definitions into plain text for the system prompt.
+            If None, a default Qwen2.5-compatible renderer is used.
     """
 
     def __init__(
@@ -166,11 +179,13 @@ class VLLMBackend(AsyncOpenAI):
         api_key: str = "vllm",
         lora_name: str = "scribe_adapter",
         plain_text_tools: bool = True,
+        tool_schema_renderer: Optional[Any] = None,
     ):
         super().__init__(base_url=base_url, api_key=api_key)
         self.lora_name = lora_name
         self.base_url = base_url
         self.plain_text_tools = plain_text_tools
+        self.tool_schema_renderer = tool_schema_renderer or _tools_to_prompt_schema
 
     def _inject_tool_schema(
         self,
@@ -178,7 +193,7 @@ class VLLMBackend(AsyncOpenAI):
         tools: Optional[List[Dict[str, Any]]],
     ) -> List[Dict[str, Any]]:
         """Append tool schemas to the system prompt for plain-text generation."""
-        schema_text = _tools_to_prompt_schema(tools)
+        schema_text = self.tool_schema_renderer(tools)
         if not schema_text:
             return messages
         out: List[Dict[str, Any]] = []
@@ -186,7 +201,12 @@ class VLLMBackend(AsyncOpenAI):
         for msg in messages:
             if msg.get("role") == "system" and not injected:
                 content = msg.get("content") or ""
-                content = f"{content}\n\n{schema_text}".strip()
+                if content:
+                    content = f"{content}\n\n{schema_text}"
+                else:
+                    # Match the chat template's behavior for an empty system
+                    # message: it keeps the leading newlines before # Tools.
+                    content = f"\n\n{schema_text}"
                 out.append({**msg, "content": content})
                 injected = True
             else:
