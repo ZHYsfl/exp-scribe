@@ -232,6 +232,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use float16 for training",
     )
+    parser.add_argument(
+        "--max_concurrent",
+        type=int,
+        default=1,
+        help="Max concurrent vLLM rollouts (lower if you see Hermes 'Already borrowed' errors)",
+    )
     return parser.parse_args()
 
 
@@ -486,7 +492,10 @@ def main():
         # 2. Rollout group.
         print("Collecting rollouts...")
         trajectories = asyncio.run(
-            collect_group_rollouts(backend, items, args.group_size, tokenizer, args)
+            collect_group_rollouts(
+                backend, items, args.group_size, tokenizer, args,
+                max_concurrent=args.max_concurrent,
+            )
         )
 
         # 3. Compute rewards and advantages per task group.
