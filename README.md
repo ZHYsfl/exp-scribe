@@ -1,4 +1,4 @@
-# SCRIBE : Agents Should Write What They Learn （by Zane）
+# SCRIBE : Loop Engineering in Long Horizon Tasks Needs Agent to Write What They Did Each Turn (by Zane)
 
 A new design paradigm and infra to LLM-agent training for Loop Engineering.
 
