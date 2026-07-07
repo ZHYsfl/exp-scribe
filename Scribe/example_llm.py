@@ -29,7 +29,11 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
 from Scribe.llm_runtime import LLMConfig  # noqa: E402
-from Scribe.scribe_gym import GymBackedAgent, LinuxWorkspaceEnv, ScribeRunner  # noqa: E402
+from Scribe.scribe_gym import (
+    GymBackedAgent,
+    LinuxWorkspaceEnv,
+    ScribeRunner,
+)  # noqa: E402
 from Scribe.scribe_gym.chat_template import render_messages  # noqa: E402
 
 # Base system prompt. The task description is appended to it by ScribeRunner.

@@ -28,11 +28,9 @@ from .rewards import (
     compute_turn_reward,
 )
 from .rl_utils import (
-    assign_token_credits,
-    build_training_sample,
+    build_training_samples,
     compute_group_advantages,
     compute_trajectory_reward,
-    trajectory_to_completion_text,
 )
 from .runner import ScribeRunner
 from .step_expander import compute_loss_mask, expand_turn
@@ -63,11 +61,10 @@ __all__ = [
     "TurnRewardBreakdown",
     "TurnRewardConfig",
     "VLLMBackend",
-    "assign_token_credits",
     "build_judge_prompt",
     "build_structured_judge",
     "build_tool_messages",
-    "build_training_sample",
+    "build_training_samples",
     "compute_grpo_loss",
     "compute_group_advantages",
     "compute_loss_mask",

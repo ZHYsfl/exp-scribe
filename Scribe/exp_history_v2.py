@@ -39,9 +39,13 @@ SYSTEM_PROMPT = (
 )
 
 
+from transformers import AutoTokenizer
+
+
 async def main():
     cfg = LLMConfig(api_key="EMPTY", model="/root/autodl-tmp/qwen3-1.7b",
                     base_url="http://127.0.0.1:8002/v1")
+    tokenizer = AutoTokenizer.from_pretrained(cfg.model, trust_remote_code=True)
     ws = Path("/root/autodl-tmp/exp"); ws.mkdir(parents=True, exist_ok=True)
     env = LinuxWorkspaceEnv(
         task_description="Compute 456 raised to the power of 3, then call submit with the numeric result.",
@@ -51,7 +55,8 @@ async def main():
     hm = HistoryManager(counter, k=2, hard_limit=4096, compression_margin=512)
     agent = GymBackedAgent(config=cfg, env=env, history_manager=hm, debug=False, enable_judge=True)
     runner = ScribeRunner(agent=agent, system_prompt=SYSTEM_PROMPT,
-                          done_mode="threshold", reward_threshold=1.0, max_turns=3)
+                          done_mode="threshold", reward_threshold=1.0, max_turns=3,
+                          tokenizer=tokenizer)
 
     print("="*70); print("SCRIBE hm mode (k=2)"); print("="*70)
     observations = await runner.run()
@@ -75,7 +80,7 @@ async def main():
     print("(2) chat template rendering (what the model actually receives)")
     print("="*70)
     rendered = render_messages(
-        observations, tools=agent._get_tools(), add_generation_prompt=False
+        observations, tokenizer=tokenizer, tools=agent._get_tools(), add_generation_prompt=False
     )
     print(rendered)
 

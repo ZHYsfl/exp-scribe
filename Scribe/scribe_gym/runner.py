@@ -19,12 +19,14 @@ class ScribeRunner:
         done_mode: str = "threshold",
         reward_threshold: float = 1.0,
         max_turns: int = 32,
+        tokenizer: Optional[Any] = None,
     ):
         self.agent = agent
         self.system_prompt = system_prompt
         self.done_mode = done_mode
         self.reward_threshold = reward_threshold
         self.max_turns = max_turns
+        self.tokenizer = tokenizer
         self._best_reward = float("-inf")
 
     async def run(
@@ -73,7 +75,7 @@ class ScribeRunner:
         obs, info = self.agent.env.reset(seed=seed, options=options)
         self.agent.trajectory.clear()
         self._best_reward = float("-inf")
-        messages = self._build_initial_observations(obs)
+        messages = self._build_initial_observations(obs, tokenizer=self.tokenizer)
         # Seed the history_manager prefix (system + kickoff) for a fresh episode.
         hm = getattr(self.agent, "history_manager", None)
         if hm is not None:
@@ -88,7 +90,9 @@ class ScribeRunner:
                 hm.set_prefix(system_msg, kickoff_msg)
         return messages
 
-    def _build_system_prompt(self, task_description: Optional[str] = None) -> str:
+    def _build_system_prompt(
+        self, task_description: Optional[str] = None, tokenizer: Optional[Any] = None
+    ) -> str:
         # Tools are NOT baked into the system content here. The server injects
         # the tool definitions into the prompt itself from the `tools=` API
         # field (verified against a local vllm server: the chat template renders
@@ -101,7 +105,9 @@ class ScribeRunner:
             messages = [{"role": "system", "content": content}]
         else:
             messages = [{"role": "user", "content": ""}]
-        rendered = render_messages(messages, tools=[], add_generation_prompt=False)
+        rendered = render_messages(
+            messages, tokenizer=tokenizer, tools=[], add_generation_prompt=False
+        )
         start = rendered.find("<|im_start|>system\n")
         if start == -1:
             return ""
@@ -111,9 +117,11 @@ class ScribeRunner:
             return rendered[start:]
         return rendered[start:end]
 
-    def _build_initial_observations(self, task_description: str) -> List[Dict[str, Any]]:
+    def _build_initial_observations(
+        self, task_description: str, tokenizer: Optional[Any] = None
+    ) -> List[Dict[str, Any]]:
         messages: List[Dict[str, Any]] = []
-        system_content = self._build_system_prompt(task_description)
+        system_content = self._build_system_prompt(task_description, tokenizer=tokenizer)
         if system_content:
             messages.append({"role": "system", "content": system_content})
         # The task description is merged into the system prompt; the first user
