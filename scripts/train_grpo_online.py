@@ -329,13 +329,17 @@ async def collect_group_rollouts(
     tokenizer: Any,
     args: argparse.Namespace,
 ) -> List[List[TurnRecord]]:
-    """Sample ``group_size`` trajectories for each task in ``items``."""
-    tasks = [
-        rollout_one(backend, item, tokenizer, args)
-        for _ in range(group_size)
-        for item in items
-    ]
-    return await asyncio.gather(*tasks)
+    """Sample ``group_size`` trajectories for each task in ``items``.
+
+    Run sequentially to avoid concurrent tokenizer access in vLLM's Hermes
+    tool parser ("Already borrowed" RuntimeError).
+    """
+    results: List[List[TurnRecord]] = []
+    for _ in range(group_size):
+        for item in items:
+            turns = await rollout_one(backend, item, tokenizer, args)
+            results.append(turns)
+    return results
 
 
 def collate_fn(batch: List[Dict[str, Any]], pad_token_id: int) -> Dict[str, torch.Tensor]:
