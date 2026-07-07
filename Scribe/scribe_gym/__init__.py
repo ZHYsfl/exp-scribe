@@ -17,6 +17,7 @@ from .parsers import (
     render_scribe_blocks,
 )
 from .rewards import (
+    DEFAULT_TURN_REWARD_CONFIG,
     Judge,
     SummaryJudgeScores,
     TurnOutcome,
@@ -39,6 +40,7 @@ from .turn_record import Step, StepRecord, TurnRecord
 from .vllm_backend import VLLMBackend
 
 __all__ = [
+    "DEFAULT_TURN_REWARD_CONFIG",
     "Compressor",
     "GymBackedAgent",
     "HistoryManager",

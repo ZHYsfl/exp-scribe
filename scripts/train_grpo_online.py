@@ -332,18 +332,26 @@ async def collect_group_rollouts(
     group_size: int,
     tokenizer: Any,
     args: argparse.Namespace,
+    max_concurrent: int = 4,
 ) -> List[List[TurnRecord]]:
     """Sample ``group_size`` trajectories for each task in ``items``.
 
-    Run sequentially to avoid concurrent tokenizer access in vLLM's Hermes
-    tool parser ("Already borrowed" RuntimeError).
+    Rollouts are parallelized with a semaphore to bound concurrent load on the
+    vLLM server. If you see Hermes tool-parser "Already borrowed" errors,
+    lower ``max_concurrent`` to 1.
     """
-    results: List[List[TurnRecord]] = []
-    for _ in range(group_size):
-        for item in items:
-            turns = await rollout_one(backend, item, tokenizer, args)
-            results.append(turns)
-    return results
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def _one(item: Dict[str, Any]) -> List[TurnRecord]:
+        async with semaphore:
+            return await rollout_one(backend, item, tokenizer, args)
+
+    tasks = [
+        _one(item)
+        for _ in range(group_size)
+        for item in items
+    ]
+    return await asyncio.gather(*tasks)
 
 
 def collate_fn(batch: List[Dict[str, Any]], pad_token_id: int) -> Dict[str, torch.Tensor]:
