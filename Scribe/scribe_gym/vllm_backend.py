@@ -70,6 +70,7 @@ class VLLMBackend(AsyncOpenAI):
         payload = {
             "lora_name": self.lora_name,
             "lora_path": lora_path,
+            "load_inplace": True,
         }
         try:
             resp = httpx.post(url, json=payload, timeout=60.0)
