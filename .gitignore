@@ -19,3 +19,5 @@ unsloth_compiled_cache/
 outputs/
 
 vllm/
+
+qwen*/

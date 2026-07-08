@@ -47,8 +47,9 @@ from __future__ import annotations
 import json
 import re as std_re
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+import httpx
 from openai import AsyncOpenAI
 
 
@@ -180,8 +181,9 @@ class VLLMBackend(AsyncOpenAI):
         lora_name: str = "scribe_adapter",
         plain_text_tools: bool = True,
         tool_schema_renderer: Optional[Any] = None,
+        timeout: Union[float, httpx.Timeout] = httpx.Timeout(None, connect=10.0, read=120.0, write=30.0),
     ):
-        super().__init__(base_url=base_url, api_key=api_key)
+        super().__init__(base_url=base_url, api_key=api_key, timeout=timeout)
         self.lora_name = lora_name
         self.base_url = base_url
         self.plain_text_tools = plain_text_tools
