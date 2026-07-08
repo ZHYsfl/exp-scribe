@@ -23,3 +23,4 @@ vllm/
 qwen*/
 
 *.log
+!train_sft_submit_only.log
