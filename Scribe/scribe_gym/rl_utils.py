@@ -32,11 +32,18 @@ from .turn_record import Step, TurnRecord
 def compute_trajectory_reward(
     turns: List[TurnRecord], decay: float = 0.8
 ) -> float:
-    """README Third: final_turn_reward * decay ** len(turns_used)."""
+    """README Third: mean turn reward multiplied by a length decay.
+
+    Using the mean turn reward (instead of only the final turn reward) ensures
+    that poor behavior in earlier turns is directly penalized. A trajectory
+    that wastes early turns with malformed/repeated tool calls receives a lower
+    reward even if the final turn eventually succeeds. The length decay still
+    rewards solving in fewer turns.
+    """
     if not turns:
         return 0.0
-    final_turn_reward = turns[-1].reward
-    return float(final_turn_reward * (decay ** len(turns)))
+    mean_turn_reward = sum(turn.reward for turn in turns) / len(turns)
+    return float(mean_turn_reward * (decay ** len(turns)))
 
 
 def compute_group_advantages(

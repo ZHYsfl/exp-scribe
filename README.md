@@ -712,9 +712,11 @@ the metric is low,that means the block does not repeat itself,otherwise the bloc
 
 ## Third : the reward rule of a trajectory is:
 
-trajectory_reward = final_turn_reward * decay ** len(turns_used)
+trajectory_reward = mean(turn_reward for turn in turns_used) * decay ** len(turns_used)
 
-where `final_turn_reward` is the turn-level reward of the last turn (0~1, from the 15 metrics), `len(turns_used)` is the number of turns actually used in this trajectory, and `decay` is a discount factor in (0,1) (e.g. 0.8). This rewards solving in fewer turns without diluting the main signal as a plain division would: a 1-turn success gives `final_turn_reward * decay`, a 3-turn success gives `final_turn_reward * decay^3` — the gap scales geometrically but the base signal (`final_turn_reward`) is preserved.
+where `turn_reward` is the turn-level reward of each turn (0~1, from the 15 metrics), `len(turns_used)` is the number of turns actually used in this trajectory, and `decay` is a discount factor in (0,1) (e.g. 0.8).
+
+We use the **mean** turn reward rather than only the final turn reward so that poor behavior in earlier turns is directly penalized. A trajectory that wastes early turns with malformed or repeated tool calls receives a lower trajectory reward even if the final turn eventually succeeds. The length decay still rewards solving in fewer turns: a 1-turn success gives `mean_reward * decay`, while a 3-turn success gives `mean_reward * decay^3`.
 
 ## Fourth : RL Training and Credit Assignment:
 
