@@ -39,11 +39,18 @@ def _count_submit_calls(step_records: List[StepRecord]) -> int:
 
 
 def _count_malformed_calls(trajectory: List[Dict[str, Any]]) -> int:
-    """Count tool_results with error_type == 'malformed_arguments' across the turn."""
+    """Count tool_results with error_type in ('malformed_arguments', 'exec_error').
+
+    We treat ``exec_error`` as a malformed tool call for reward purposes: if the
+    model passes an invalid argument (e.g. a hallucinated ``stdout`` parameter to
+    ``bash``), the tool function raises and the env reports ``exec_error``. From
+    the model's perspective this is the same failure mode as a schema-level
+    malformed call and should be penalized by Metric 14.
+    """
     n = 0
     for entry in trajectory:
         for r in (entry.get("info") or {}).get("tool_results", []):
-            if r.get("error_type") == "malformed_arguments":
+            if r.get("error_type") in ("malformed_arguments", "exec_error"):
                 n += 1
     return n
 

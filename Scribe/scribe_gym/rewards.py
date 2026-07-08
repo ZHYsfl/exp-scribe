@@ -567,10 +567,12 @@ def metric_13(turn: TurnRecord, counter, cfg: TurnRewardConfig) -> float:
 def metric_14(turn: TurnRecord, oc: TurnOutcome, cfg: TurnRewardConfig) -> float:
     """Metric 14 — malformed tool-call penalty.
 
-    README 14: penalize tool calls whose arguments fail schema-level validation.
-    A call is malformed if the env reports ``error_type == "malformed_arguments"``
-    (e.g. argument JSON is unparseable, arguments is not an object, or a required
-    parameter such as bash's ``command`` is missing). Each malformed call incurs
+    README 14: penalize tool calls whose arguments fail schema-level validation
+    or cause execution errors due to bad arguments. A call is malformed if the
+    env reports ``error_type`` in ``("malformed_arguments", "exec_error")``
+    (e.g. argument JSON is unparseable, arguments is not an object, a required
+    parameter such as bash's ``command`` is missing, or an unknown parameter
+    such as ``stdout`` is passed to ``bash``). Each malformed call incurs
     -cfg.malformed_call_penalty; the result is clamped to [0,1]. Perfect tool
     usage -> 1.0.
     """
