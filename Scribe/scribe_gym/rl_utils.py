@@ -155,6 +155,32 @@ def _build_step_training_sample(
     }
 
 
+def _left_truncate_sample(
+    sample: Dict[str, Any],
+    max_seq_length: int,
+) -> Dict[str, Any]:
+    """Trim a sample from the left so it fits ``max_seq_length``.
+
+    We keep the rightmost tokens (which include the model-generated completion)
+    so the rollout tokens and their credits are preserved. Prompt-only tokens
+    on the left are dropped first. This lets long/loopy trajectories still be
+    trained on instead of skipped.
+    """
+    seq_len = len(sample["input_ids"])
+    if seq_len <= max_seq_length:
+        return sample
+    keep = max_seq_length
+    start = seq_len - keep
+    return {
+        "prompt": sample["prompt"],
+        "completion": sample["completion"],
+        "input_ids": sample["input_ids"][start:],
+        "attention_mask": sample["attention_mask"][start:],
+        "token_credits": sample["token_credits"][start:],
+        "rollout_mask": sample["rollout_mask"][start:],
+    }
+
+
 def build_training_samples(
     turns: List[TurnRecord],
     trajectory_advantage: float,
@@ -167,8 +193,9 @@ def build_training_samples(
     rollout tokens. Each sample corresponds to one LLM call and uses the exact
     prompt messages seen during rollout, so the chat-template boundaries match.
 
-    Samples whose full tokenized length exceeds ``max_seq_length`` are skipped
-    to avoid OOM during the GRPO log-prob backward on a single 24 GB GPU.
+    Samples longer than ``max_seq_length`` are left-truncated (oldest prompt
+    tokens dropped) rather than skipped, so low-reward long/loopy trajectories
+    still contribute to the GRPO update.
     """
     if not turns:
         return []
@@ -184,8 +211,8 @@ def build_training_samples(
 
         for step in steps:
             sample = _build_step_training_sample(step, step_credit, tokenizer)
-            if sample and len(sample["input_ids"]) <= max_seq_length:
-                samples.append(sample)
+            if sample:
+                samples.append(_left_truncate_sample(sample, max_seq_length))
 
     return samples
 
