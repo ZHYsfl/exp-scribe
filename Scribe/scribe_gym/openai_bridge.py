@@ -19,11 +19,12 @@ from .rewards import (
     Judge,
     TurnOutcome,
     TurnRewardConfig,
+    _tool_call_norm,
     build_structured_judge,
     compute_turn_reward,
 )
 from .tool_calling_env import ToolCallingScribeEnv
-from .turn_record import StepRecord, TurnRecord
+from .turn_record import StepRecord, TurnRecord, ScribeBlockType
 
 
 def _count_submit_calls(step_records: List[StepRecord]) -> int:
@@ -35,6 +36,40 @@ def _count_submit_calls(step_records: List[StepRecord]) -> int:
             if isinstance(p, dict) and p.get("name") == "submit":
                 n += 1
     return n
+
+
+def _count_malformed_calls(trajectory: List[Dict[str, Any]]) -> int:
+    """Count tool_results with error_type == 'malformed_arguments' across the turn."""
+    n = 0
+    for entry in trajectory:
+        for r in (entry.get("info") or {}).get("tool_results", []):
+            if r.get("error_type") == "malformed_arguments":
+                n += 1
+    return n
+
+
+def _count_repeated_calls(step_records: List[StepRecord]) -> int:
+    """Count cross-step repeated tool calls (same name + normalized arguments).
+
+    Parallel duplicates within a single step are handled by metric 2b; this
+    function only counts a call as repeated when the same (name, args) pair
+    was already emitted in an earlier step of this turn.
+    """
+    seen: set = set()
+    repeated = 0
+    _A = ScribeBlockType.TOOL_CALL
+    for rec in step_records:
+        step_keys = []
+        for b in rec.output_blocks:
+            if b.type == _A:
+                key = _tool_call_norm(b)
+                if key is not None:
+                    step_keys.append(key)
+        for key in step_keys:
+            if key in seen:
+                repeated += 1
+        seen.update(step_keys)
+    return repeated
 
 
 class GymBackedAgent(Agent):
@@ -69,7 +104,7 @@ class GymBackedAgent(Agent):
         self.history_manager = history_manager
         # Per-turn step records (推理实况), populated by the SCRIBE chat loop.
         self._turn_step_records: List[StepRecord] = []
-        # 13-metric turn reward config + token counter, injected so the runner/tests
+        # 15-metric turn reward config + token counter, injected so the runner/tests
         # can wire them without touching env correctness logic.
         self.reward_config = reward_config or DEFAULT_TURN_REWARD_CONFIG
         self.token_counter = token_counter
@@ -197,13 +232,13 @@ class GymBackedAgent(Agent):
         return msgs
 
     async def finalize_turn(self, feedback: Optional[str]) -> Optional[TurnRecord]:
-        """Package this turn into a TurnRecord, compute the 13-metric turn
+        """Package this turn into a TurnRecord, compute the 15-metric turn
         reward FROM the record, then hand it to the history_manager. Called by
         ScribeRunner._evaluate_turn when a turn ends. No-op when no
         history_manager is attached (plain ReAct).
 
         Order matters: the record is built FIRST (so its parsed blocks are
-        available), THEN the 13-metric reward is computed from those blocks +
+        available), THEN the 15-metric reward is computed from those blocks +
         the env trajectory's termination/answer info, and set onto
         record.reward. This is the inverse of the old (reward-then-record)
         order, which had nothing to compute the reward from.
@@ -225,7 +260,7 @@ class GymBackedAgent(Agent):
 
     async def _compute_turn_reward(self, record: TurnRecord) -> float:
         """Build the TurnOutcome from the env trajectory + step records, compute
-        the 13-metric reward, and return the scalar total."""
+        the 15-metric reward, and return the scalar total."""
         oc = self._build_outcome(record)
         breakdown = await compute_turn_reward(
             record,
@@ -254,6 +289,8 @@ class GymBackedAgent(Agent):
             answer=info.get("answer"),
             right_answer=info.get("right_answer"),
             submit_count=_count_submit_calls(record.step_records),
+            malformed_tool_calls=_count_malformed_calls(self.trajectory),
+            repeated_tool_calls=_count_repeated_calls(record.step_records),
         )
 
     async def _env_step(

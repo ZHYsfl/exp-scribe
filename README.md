@@ -702,6 +702,10 @@ model-generated blocks — tool_call (structured JSON, naturally repetitive) and
 the model's responsibility) are excluded.
 the metric is low,that means the block does not repeat itself,otherwise the block loops.
 
+14. **Malformed tool-call penalty** — penalize tool calls whose arguments fail schema-level validation. A call is malformed if the execution layer reports `error_type == "malformed_arguments"`: for example, the argument JSON is unparseable, `arguments` is not an object, or a required parameter (such as `bash`'s `command`) is missing. Each malformed call incurs a fixed penalty (e.g. -0.1) and the metric is clamped to [0,1]. Perfect tool usage -> 1.0. This gives GRPO a continuous gradient to suppress malformed calls instead of letting them loop until truncation.
+
+15. **Repeated tool-call penalty** — penalize the model emitting the exact same `(name, normalized arguments)` tool call that was already executed earlier in this turn. Unlike metric 2b (which only penalizes parallel duplicates within one assistant message), this metric catches cross-step loops such as `bash {command: ls}` -> result -> `bash {command: ls}` again. Each repeated call incurs a fixed penalty (e.g. -0.08) and the metric is clamped to [0,1]. Perfect usage -> 1.0. Together with metric 14, this stops the common rollout failure mode where the model repeats or malforms tool calls and wastes steps until `max_steps_per_turn` truncates the turn.
+
 **Note：the 7,8,9,10 metric will be given completely in one llm call.** (Metric 11 is a pure statistical metric and stays out of this judge call — see its line "no LLM judge needed".)
 
 **Note：the reflect block is a cot process for model to let the latter turn_summary get higher reward.**
@@ -710,7 +714,7 @@ the metric is low,that means the block does not repeat itself,otherwise the bloc
 
 trajectory_reward = final_turn_reward * decay ** len(turns_used)
 
-where `final_turn_reward` is the turn-level reward of the last turn (0~1, from the 13 metrics), `len(turns_used)` is the number of turns actually used in this trajectory, and `decay` is a discount factor in (0,1) (e.g. 0.8). This rewards solving in fewer turns without diluting the main signal as a plain division would: a 1-turn success gives `final_turn_reward * decay`, a 3-turn success gives `final_turn_reward * decay^3` — the gap scales geometrically but the base signal (`final_turn_reward`) is preserved.
+where `final_turn_reward` is the turn-level reward of the last turn (0~1, from the 15 metrics), `len(turns_used)` is the number of turns actually used in this trajectory, and `decay` is a discount factor in (0,1) (e.g. 0.8). This rewards solving in fewer turns without diluting the main signal as a plain division would: a 1-turn success gives `final_turn_reward * decay`, a 3-turn success gives `final_turn_reward * decay^3` — the gap scales geometrically but the base signal (`final_turn_reward`) is preserved.
 
 ## Fourth : RL Training and Credit Assignment:
 

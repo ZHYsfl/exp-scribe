@@ -1,4 +1,4 @@
-"""Unit tests for rewards.py — the 13 turn-level reward metrics.
+"""Unit tests for rewards.py — the 15 turn-level reward metrics.
 
 Builds TurnRecords the same way test_step_expander does (parse_scribe_blocks
 over scripted content). Injects a FakeCounter (chars as pseudo-tokens) so no
@@ -27,7 +27,7 @@ from Scribe.scribe_gym import (
 from Scribe.scribe_gym.parsers import parse_scribe_blocks
 from Scribe.scribe_gym.rewards import (
     metric_1, metric_2, metric_3, metric_4, metric_5, metric_6,
-    metric_11, metric_12, metric_13, metrics_7_10,
+    metric_11, metric_12, metric_13, metric_14, metric_15, metrics_7_10,
 )
 from Scribe.scribe_gym.turn_record import StepRecord
 
@@ -370,6 +370,49 @@ def test_m13_repetition_low():
     assert metric_13(turn, c, DEFAULT_TURN_REWARD_CONFIG) < 0.2
 
 
+# ---- metrics 14-15 ----
+def test_m14_no_malformed():
+    turn = build_turn([("tool", "o" + _tc("bash", {"command": "ls"}), "c0", "ok"),
+                       ("final", "o<reflect>r</reflect><turn_summary>s</turn_summary>")])
+    oc = TurnOutcome(truncated=False, terminated=True, done_reason="no_tool_call",
+                     answer="42", right_answer="42", submit_count=1,
+                     malformed_tool_calls=0, repeated_tool_calls=0)
+    assert metric_14(turn, oc, DEFAULT_TURN_REWARD_CONFIG) == 1.0
+
+
+def test_m14_malformed_penalty():
+    turn = build_turn([("tool", "o" + _tc("bash", {"command": "ls"}), "c0", "ok"),
+                       ("final", "o<reflect>r</reflect><turn_summary>s</turn_summary>")])
+    oc = TurnOutcome(truncated=False, terminated=True, done_reason="no_tool_call",
+                     answer="42", right_answer="42", submit_count=1,
+                     malformed_tool_calls=2, repeated_tool_calls=0)
+    cfg = DEFAULT_TURN_REWARD_CONFIG
+    assert metric_14(turn, oc, cfg) == 1.0 - 2 * cfg.malformed_call_penalty
+
+
+def test_m15_no_repeat():
+    turn = build_turn([
+        ("tool", "o" + _tc("bash", {"command": "ls"}), "c0", "ok"),
+        ("tool", "o" + _tc("bash", {"command": "pwd"}), "c1", "ok"),
+        ("final", "o<reflect>r</reflect><turn_summary>s</turn_summary>")])
+    oc = TurnOutcome(truncated=False, terminated=True, done_reason="no_tool_call",
+                     answer="42", right_answer="42", submit_count=1,
+                     malformed_tool_calls=0, repeated_tool_calls=0)
+    assert metric_15(turn, oc, DEFAULT_TURN_REWARD_CONFIG) == 1.0
+
+
+def test_m15_repeated_penalty():
+    turn = build_turn([
+        ("tool", "o" + _tc("bash", {"command": "ls"}), "c0", "ok"),
+        ("tool", "o" + _tc("bash", {"command": "ls"}), "c1", "ok"),
+        ("final", "o<reflect>r</reflect><turn_summary>s</turn_summary>")])
+    oc = TurnOutcome(truncated=False, terminated=True, done_reason="no_tool_call",
+                     answer="42", right_answer="42", submit_count=1,
+                     malformed_tool_calls=0, repeated_tool_calls=1)
+    cfg = DEFAULT_TURN_REWARD_CONFIG
+    assert metric_15(turn, oc, cfg) == 1.0 - cfg.repeated_call_penalty
+
+
 # ---- aggregation ----
 def test_compute_turn_reward_clamps_and_weights():
     turn = build_turn([
@@ -389,7 +432,8 @@ def test_compute_turn_reward_clamps_and_weights():
           DEFAULT_TURN_REWARD_CONFIG.w7, DEFAULT_TURN_REWARD_CONFIG.w8,
           DEFAULT_TURN_REWARD_CONFIG.w9, DEFAULT_TURN_REWARD_CONFIG.w10,
           DEFAULT_TURN_REWARD_CONFIG.w11, DEFAULT_TURN_REWARD_CONFIG.w12,
-          DEFAULT_TURN_REWARD_CONFIG.w13]
+          DEFAULT_TURN_REWARD_CONFIG.w13, DEFAULT_TURN_REWARD_CONFIG.w14,
+          DEFAULT_TURN_REWARD_CONFIG.w15]
     assert abs(bd.total - sum(w * v for w, v in zip(ws, bd.metrics))) < 1e-9
 
 

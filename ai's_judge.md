@@ -104,7 +104,7 @@ Metric 7（忠实度）、8（中立性）、9（聚焦性）、10（流畅度�
 | **Phase 0** | 格式遵循 | 用强模型生成 1K-10K 条 SFT 数据，验证模型能否稳定输出 `T/O/A/R/S` 格式 |
 | **Phase 1** | Summary 质量 | 固定 task（如 GSM8K），对比 "ReAct 无 summary" vs "SCRIBE 有 summary" 的上下文增长曲线 |
 | **Phase 2** | SFT-only 效率 | 训练后的模型在**不复用**的情况下，是否因为更好的反思/总结而减少每 turn 的 step 数 |
-| **Phase 3** | RL 优化 | 引入 GRPO + 13 metrics，验证 trajectory-level 的 token 消耗是否下降，准确率是否不跌 |
+| **Phase 3** | RL 优化 | 引入 GRPO + 15 metrics，验证 trajectory-level 的 token 消耗是否下降，准确率是否不跌 |
 | **Phase 4** | 长上下文 | 故意构造需要 20+ turn 的任务，验证渐进式压缩是否能让模型"无限"循环下去 |
 
 这个路线的好处是：**每一阶段都有明确的通过/不通过标准**，不会在 infra 搭好后才发现核心假设不成立。

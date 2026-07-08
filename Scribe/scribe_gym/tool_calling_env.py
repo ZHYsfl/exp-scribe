@@ -74,20 +74,61 @@ class ToolCallingScribeEnv(ScribeEnv):
         tasks = [self._execute_single_tool_call(tc) for tc in tool_calls]
         return await asyncio.gather(*tasks)
 
+    def _check_required_arguments(
+        self, name: str, arguments: Dict[str, Any]
+    ) -> Optional[str]:
+        """Return an error message if a required parameter is missing."""
+        tool = self._tool_map.get(name)
+        if tool is None:
+            return None
+        required = set(tool.parameters.get("required", []))
+        missing = sorted(required - set(arguments.keys()))
+        if missing:
+            return f"missing required argument(s): {', '.join(missing)}"
+        return None
+
     async def _execute_single_tool_call(
         self, tool_call: Dict[str, Any]
     ) -> Dict[str, Any]:
         name = tool_call.get("name")
         arguments = tool_call.get("arguments", {})
+
         # Robustness: models occasionally emit arguments as a JSON-encoded string
         # instead of an object (e.g. {"arguments": "{\"command\": \"...\"}"}).
         if isinstance(arguments, str):
             try:
                 arguments = json.loads(arguments)
-            except Exception:
-                arguments = {}
+            except Exception as exc:
+                return {
+                    "name": name,
+                    "output": (
+                        f"[MALFORMED_ARGUMENTS] Failed to parse argument JSON: {exc}. "
+                        f"Raw arguments: '{tool_call.get('arguments')}'"
+                    ),
+                    "status": "error",
+                    "error_type": "malformed_arguments",
+                }
         if not isinstance(arguments, dict):
-            arguments = {}
+            return {
+                "name": name,
+                "output": (
+                    f"[MALFORMED_ARGUMENTS] arguments must be an object, "
+                    f"got {type(arguments).__name__}"
+                ),
+                "status": "error",
+                "error_type": "malformed_arguments",
+            }
+
+        # Check required parameters before execution so that missing required
+        # args (e.g. bash with {}) are reported as malformed, not exec_error.
+        missing_msg = self._check_required_arguments(name, arguments)
+        if missing_msg:
+            return {
+                "name": name,
+                "output": f"[MALFORMED_ARGUMENTS] {missing_msg}",
+                "status": "error",
+                "error_type": "malformed_arguments",
+            }
 
         tool = self._tool_map.get(name)
         if tool is None:

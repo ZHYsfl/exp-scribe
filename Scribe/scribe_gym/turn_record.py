@@ -73,7 +73,7 @@ class TurnRecord:
     properties computed from step_records. This avoids redundant storage and
     the drift that redundancy invites.
 
-    reward: this turn's 13-metric reward.
+    reward: this turn's 15-metric reward.
     feedback: feedback string emitted at this turn's end (attached to THIS
               turn; HistoryManager emits it after this turn's blocks in the
               next turn's input — in-position, not piled at end).
@@ -82,7 +82,7 @@ class TurnRecord:
     step_records: List[StepRecord]
     reward: float = 0.0
     feedback: Optional[str] = None
-    # Full 13-metric breakdown for debugging/ablation (set by finalize_turn
+    # Full 15-metric breakdown for debugging/ablation (set by finalize_turn
     # after compute_turn_reward). Optional to avoid importing rewards here.
     reward_breakdown: Optional[Any] = None
 

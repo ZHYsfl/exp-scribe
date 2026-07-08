@@ -1,8 +1,8 @@
-"""SCRIBE 13 turn-level reward metrics (pure functions).
+"""SCRIBE 15 turn-level reward metrics (pure functions).
 
 Given a TurnRecord (the turn's parsed blocks, single source of truth) and a
 TurnOutcome (termination/answer info pulled from the env trajectory at
-finalization time), compute the 13 README metrics, weighted-sum them into one
+finalization time), compute the 15 README metrics, weighted-sum them into one
 turn reward, and return a full breakdown for debugging / ablation.
 
 Design (my_project_philosophy.md): pure functions, no agent/env dependency,
@@ -65,6 +65,8 @@ class TurnOutcome:
     answer: Optional[str]
     right_answer: Optional[str]
     submit_count: int
+    malformed_tool_calls: int = 0
+    repeated_tool_calls: int = 0
 
 
 @dataclass
@@ -87,7 +89,7 @@ class TurnRewardConfig:
     # weights: designed so that a "perfect" turn (correct answer, clean format,
     # concise, good summary) scores close to 1.0, while each failure mode pulls
     # the total down smoothly rather than clipping abruptly.
-    w1: float = 0.35   # answer + natural termination (dominant signal)
+    w1: float = 0.32   # answer + natural termination (dominant signal)
     w2: float = 0.08   # tool usage (submit + parallel dup)
     w3: float = 0.04   # step length
     w4: float = 0.12   # format
@@ -100,10 +102,14 @@ class TurnRewardConfig:
     w11: float = 0.03  # compression ratio
     w12: float = 0.03  # cross-block n-gram overlap
     w13: float = 0.02  # intra-block n-gram overlap
+    w14: float = 0.04  # malformed tool-call penalty
+    w15: float = 0.04  # repeated tool-call penalty
     # penalty magnitudes
     truncation_penalty: float = 0.20
     submit_penalty: float = 0.15
     parallel_dup_penalty: float = 0.10
+    malformed_call_penalty: float = 0.10
+    repeated_call_penalty: float = 0.08
     # format violation penalties (staircase: mild violations shave points,
     # serious violations shave more, but a few minor issues don't collapse to 0)
     fmt_missing_type: float = 0.08
@@ -143,6 +149,8 @@ class TurnRewardBreakdown:
     metric_11: float = 0.0
     metric_12: float = 0.0
     metric_13: float = 0.0
+    metric_14: float = 0.0
+    metric_15: float = 0.0
     total: float = 0.0
     judge_used: bool = False
 
@@ -152,14 +160,14 @@ class TurnRewardBreakdown:
             self.metric_1, self.metric_2, self.metric_3, self.metric_4,
             self.metric_5, self.metric_6, self.metric_7, self.metric_8,
             self.metric_9, self.metric_10, self.metric_11, self.metric_12,
-            self.metric_13,
+            self.metric_13, self.metric_14, self.metric_15,
         ]
 
     @property
     def weights(self) -> List[float]:
         c = DEFAULT_TURN_REWARD_CONFIG
         return [c.w1, c.w2, c.w3, c.w4, c.w5, c.w6,
-                c.w7, c.w8, c.w9, c.w10, c.w11, c.w12, c.w13]
+                c.w7, c.w8, c.w9, c.w10, c.w11, c.w12, c.w13, c.w14, c.w15]
 
 
 # ---------------------------------------------------------------------------
@@ -556,6 +564,39 @@ def metric_13(turn: TurnRecord, counter, cfg: TurnRewardConfig) -> float:
     return _clamp(1.0 - penalty, 0.0, 1.0)
 
 
+def metric_14(turn: TurnRecord, oc: TurnOutcome, cfg: TurnRewardConfig) -> float:
+    """Metric 14 — malformed tool-call penalty.
+
+    README 14: penalize tool calls whose arguments fail schema-level validation.
+    A call is malformed if the env reports ``error_type == "malformed_arguments"``
+    (e.g. argument JSON is unparseable, arguments is not an object, or a required
+    parameter such as bash's ``command`` is missing). Each malformed call incurs
+    -cfg.malformed_call_penalty; the result is clamped to [0,1]. Perfect tool
+    usage -> 1.0.
+    """
+    n = max(0, oc.malformed_tool_calls)
+    return _clamp(1.0 - cfg.malformed_call_penalty * n, 0.0, 1.0)
+
+
+def metric_15(turn: TurnRecord, oc: TurnOutcome, cfg: TurnRewardConfig) -> float:
+    """Metric 15 — repeated tool-call penalty.
+
+    README 15: penalize the model emitting the exact same (name, normalized
+    arguments) tool call that was already executed earlier in this turn. Unlike
+    metric 2b (which only penalizes parallel duplicates within ONE assistant
+    message), this metric catches cross-step loops such as ``bash {command: ls}``
+    -> result -> ``bash {command: ls}`` again. Each repeated call incurs
+    -cfg.repeated_call_penalty; the result is clamped to [0,1]. Perfect usage ->
+    1.0.
+
+    The count is provided by the env/outcome layer because TurnRecord does not
+    carry execution results; the reward module stays pure by reading the
+    pre-computed ``repeated_tool_calls`` from TurnOutcome.
+    """
+    n = max(0, oc.repeated_tool_calls)
+    return _clamp(1.0 - cfg.repeated_call_penalty * n, 0.0, 1.0)
+
+
 def build_judge_prompt(ground_truth: str, summary: str) -> List[Dict[str, str]]:
     """Messages for the ONE structured-output judge call backing metrics 7-10.
 
@@ -596,7 +637,7 @@ async def compute_turn_reward(
     judge: Optional[Judge] = None,
     token_counter: Any = None,
 ) -> TurnRewardBreakdown:
-    """Compute the 13 README turn metrics and weight them into one reward.
+    """Compute the 15 README turn metrics and weight them into one reward.
 
     metric_1  answer + natural termination + truncation penalty
     metric_2  tool usage (submit count + parallel identical dup)
@@ -611,6 +652,8 @@ async def compute_turn_reward(
     metric_11 compression ratio |S|/|O∪A|
     metric_12 cross-block n-gram overlap (S vs ground-truth O∪A)
     metric_13 intra-block n-gram overlap (within T/O/R/S blocks)
+    metric_14 malformed tool-call penalty
+    metric_15 repeated tool-call penalty
 
     total = clamp(Σ wi·metrici, 0..1). token_counter defaults to
     DeepSeekTokenCounter; judge=None -> judge sub-scores use cfg.judge_default.
@@ -635,10 +678,12 @@ async def compute_turn_reward(
         metric_11=metric_11(turn, token_counter, cfg),
         metric_12=metric_12(turn, token_counter, cfg),
         metric_13=metric_13(turn, token_counter, cfg),
+        metric_14=metric_14(turn, outcome, cfg),
+        metric_15=metric_15(turn, outcome, cfg),
         judge_used=judge_used,
     )
     ws = [cfg.w1, cfg.w2, cfg.w3, cfg.w4, cfg.w5, cfg.w6,
-          cfg.w7, cfg.w8, cfg.w9, cfg.w10, cfg.w11, cfg.w12, cfg.w13]
+          cfg.w7, cfg.w8, cfg.w9, cfg.w10, cfg.w11, cfg.w12, cfg.w13, cfg.w14, cfg.w15]
     total = sum(w * v for w, v in zip(ws, bd.metrics))
     bd.total = _clamp(total, cfg.total_low, cfg.total_high)
     return bd
@@ -664,5 +709,5 @@ __all__ = [
     "compute_turn_reward", "build_judge_prompt", "build_structured_judge",
     "metrics_7_10",
     "metric_1", "metric_2", "metric_3", "metric_4", "metric_5", "metric_6",
-    "metric_11", "metric_12", "metric_13",
+    "metric_11", "metric_12", "metric_13", "metric_14", "metric_15",
 ]

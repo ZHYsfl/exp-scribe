@@ -58,7 +58,7 @@ class ScribeRunner:
 
     async def _finalize_current_turn(self, result) -> None:
         """Hand the just-ended turn to the history_manager (no-op in ReAct).
-        The 13-metric turn reward is computed INSIDE finalize_turn from the
+        The 15-metric turn reward is computed INSIDE finalize_turn from the
         freshly-built TurnRecord (block contents) + the env trajectory's
         terminated/truncated/answer info, so the runner does NOT pass a scalar
         reward here — only the stop_run/feedback signaling."""
