@@ -90,6 +90,20 @@ class ToolCallingScribeEnv(ScribeEnv):
     async def _execute_single_tool_call(
         self, tool_call: Dict[str, Any]
     ) -> Dict[str, Any]:
+        # Robustness: the model may emit a non-object inside <tool_call>, e.g.
+        # `<tool_call>100</tool_call>`. Treat anything that is not a dict as
+        # a malformed tool call instead of crashing.
+        if not isinstance(tool_call, dict):
+            return {
+                "name": None,
+                "output": (
+                    "[MALFORMED_ARGUMENTS] A tool_call must be a JSON object "
+                    f"with 'name' and 'arguments' keys, got {type(tool_call).__name__}: {tool_call!r}"
+                ),
+                "status": "error",
+                "error_type": "malformed_arguments",
+            }
+
         name = tool_call.get("name")
         arguments = tool_call.get("arguments", {})
 
