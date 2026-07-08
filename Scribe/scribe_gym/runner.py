@@ -187,6 +187,7 @@ class ScribeRunner:
         # reward/best/threshold + the per-turn submit rule only.
         reward = step["reward"]
         answer = step["info"].get("answer")
+        right_answer = step["info"].get("right_answer")
         best = self._best_reward
 
         submit_note = (
@@ -194,9 +195,18 @@ class ScribeRunner:
             "tools first, then submit once."
         )
 
+        # Explicitly tell the model whether its submitted answer is correct so
+        # it does not mistake a wrong-answer rollout for a formatting problem.
+        answer_note = ""
+        if answer is not None and right_answer is not None:
+            if answer.strip() == right_answer.strip():
+                answer_note = f" Your submitted answer '{answer}' is CORRECT."
+            else:
+                answer_note = f" Your submitted answer '{answer}' is INCORRECT."
+
         if step["truncated"]:
             return (
-                f"Reached the step limit. Current reward: {reward}. Improve in "
+                f"Reached the step limit. Current reward: {reward}.{answer_note} Improve in "
                 f"the next turn. Remember: a turn is one solving attempt from "
                 f"kickoff to your final submit; call submit at most once per turn."
             )
@@ -211,27 +221,27 @@ class ScribeRunner:
         if self.done_mode == "threshold":
             if is_new_best:
                 return (
-                    f"New best reward: {reward}. Threshold is "
+                    f"New best reward: {reward}.{answer_note} Threshold is "
                     f"{self.reward_threshold}. Keep improving.{submit_note}"
                 )
             return (
-                f"Reward: {reward}, best so far: {best}. Threshold is "
+                f"Reward: {reward}, best so far: {best}.{answer_note} Threshold is "
                 f"{self.reward_threshold}. Try to reach it.{submit_note}"
             )
 
         if reward >= self.reward_threshold:
             return (
-                f"Reward {reward} reached the threshold (best: {best}). "
+                f"Reward {reward} reached the threshold (best: {best}).{answer_note} "
                 f"Continue optimizing.{submit_note}"
             )
         if is_new_best:
             return (
                 f"New best reward: {reward} (threshold: "
-                f"{self.reward_threshold}). Keep optimizing.{submit_note}"
+                f"{self.reward_threshold}).{answer_note} Keep optimizing.{submit_note}"
             )
         return (
             f"Reward: {reward}, best so far: {best} (threshold: "
-            f"{self.reward_threshold}). Keep optimizing.{submit_note}"
+            f"{self.reward_threshold}).{answer_note} Keep optimizing.{submit_note}"
         )
 
     def _reset_env_step_count(self) -> None:
