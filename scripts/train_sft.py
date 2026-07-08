@@ -186,6 +186,7 @@ def main():
         max_seq_length=args.max_seq_length,
         dtype=None,  # Auto-detect float16/bfloat16
         load_in_4bit=True,
+        local_files_only=True,
     )
 
     model = FastLanguageModel.get_peft_model(
