@@ -19,7 +19,7 @@ set -e
 
 export VLLM_ALLOW_RUNTIME_LORA_UPDATING=1
 
-vllm serve /root/autodl-tmp/qwen2.5-1.5b-instruct \
+/root/.venv/bin/vllm serve /root/autodl-tmp/qwen2.5-1.5b-instruct \
   --enable-lora \
   --lora-modules scribe_adapter=/root/autodl-tmp/outputs/qwen2.5-1.5b-sft-gsm8k-submit-only-100/final_lora \
   --gpu-memory-utilization 0.4 \
