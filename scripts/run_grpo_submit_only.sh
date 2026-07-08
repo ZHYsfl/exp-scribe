@@ -9,7 +9,7 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-python scripts/train_grpo_online_submit_only.py \
+/root/.venv/bin/python scripts/train_grpo_online_submit_only.py \
   --base_model /root/autodl-tmp/qwen2.5-1.5b-instruct \
   --sft_lora_path /root/autodl-tmp/outputs/qwen2.5-1.5b-sft-gsm8k-submit-only-100/final_lora \
   --output_dir outputs/qwen2.5-1.5b-grpo-gsm8k-submit-only-100 \
