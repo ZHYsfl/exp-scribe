@@ -132,7 +132,8 @@ class ScribeRunner:
         # produced by _evaluate_turn.
         kickoff = (
             "Please start solving the problem. Work within this turn: use tools, "
-            "then call submit exactly once with your final answer."
+            "call submit exactly once with your final answer, then end with a final "
+            "plain-text message containing <reflect> followed by <turn_summary>."
         )
         messages.append({"role": "user", "content": kickoff})
         return messages

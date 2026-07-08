@@ -122,12 +122,14 @@ class GymBackedAgent(Agent):
                 messages=messages,
                 tools=tools,
                 tool_choice=tool_choice,
+                max_tokens=2048,
             )
         return await self.client.chat.completions.create(
             model=model,
             messages=messages,
             tools=tools,
             tool_choice=tool_choice,
+            max_tokens=2048,
         )
 
     async def chat(self, observations: list[dict]) -> list[dict]:
