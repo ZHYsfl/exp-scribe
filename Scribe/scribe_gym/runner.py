@@ -163,6 +163,17 @@ class ScribeRunner:
         return False
 
     def _should_stop_run(self, step: Dict[str, Any]) -> bool:
+        # Stop immediately when the submitted answer is correct, even if the
+        # scalar reward is below the threshold because of repeated-submit or
+        # other shaping penalties. The 15-metric turn reward is still computed
+        # from the full record, but the episode should not continue once the
+        # task is solved.
+        info = step.get("info") or {}
+        answer = info.get("answer")
+        right_answer = info.get("right_answer")
+        if answer is not None and right_answer is not None:
+            if answer.strip() == right_answer.strip():
+                return True
         return self.done_mode == "threshold" and step["reward"] >= self.reward_threshold
 
     def _build_feedback(

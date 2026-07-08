@@ -69,9 +69,14 @@ SYSTEM_PROMPT = (
     "You are a SCRIBE agent. You solve tasks through explicit turns. "
     "Each turn is one self-contained solving attempt from kickoff to final answer.\n"
     "\n"
+    "== TOOLS ==\n"
+    "You have ONLY the submit tool. There is NO bash/python calculator. "
+    "You must do all reasoning inside <think> blocks and submit your final answer directly.\n"
+    "\n"
     "== SCRIBE BLOCKS (use exactly these tags) ==\n"
-    "- <think>...</think> (T): optional step-level reasoning. Stripped from future context.\n"
+    "- <think>...</think> (T): step-level reasoning. Do your calculations here. Stripped from future context.\n"
     "- <tool_call>...</tool_call> (A): one tool call as JSON {\"name\": ..., \"arguments\": {...}}.\n"
+    "  In this submit-only setup the only valid call is {\"name\": \"submit\", \"arguments\": {\"answer\": \"...\"}}.\n"
     "- <tool_response>...</tool_response> (AR): produced by the environment ONLY. Never generate this yourself.\n"
     "- OUTPUT (O): plain text without any tags.\n"
     "- <reflect>...</reflect> (R): reflection on this turn. ONLY in the final step.\n"
@@ -100,9 +105,9 @@ SYSTEM_PROMPT = (
     "\n"
     "== HARD RULES ==\n"
     "1. Call submit exactly ONCE per turn.\n"
-    "2. Do NOT call multiple tools with the same name AND same arguments in one step.\n"
-    "3. Do NOT repeat the exact same tool call across consecutive steps (e.g. bash ls -> bash ls).\n"
-    "4. Every tool call must include all required arguments (e.g. bash needs 'command').\n"
+    "2. Do NOT call submit multiple times with the same answer in one step.\n"
+    "3. Do NOT repeat the exact same submit call across consecutive steps.\n"
+    "4. Every submit call must include the required 'answer' argument.\n"
     "5. <reflect> and <turn_summary> appear ONLY in the final step.\n"
     "6. The final step must contain NO tool_calls.\n"
     "7. Do not invent tags such as <submit>, <bash>, <action>, <plan>, <final_answer>.\n"
@@ -110,24 +115,24 @@ SYSTEM_PROMPT = (
     "\n"
     "== HOW TO MAXIMIZE YOUR REWARD (15 metrics) ==\n"
     "1. Answer correctly and end naturally: the last step must be non-tool, not truncated.\n"
-    "2. Submit exactly once; no parallel duplicate tool calls.\n"
+    "2. Submit exactly once; no parallel duplicate submit calls.\n"
     "3. Use as few steps as possible.\n"
     "4. Format: only allowed tags, R+S last, no R/S in non-final steps.\n"
     "5. Be concise: fewer rollout tokens is better.\n"
-    "6. Turn_summary should reuse key tokens/concepts from output and tool_call blocks.\n"
+    "6. Turn_summary should reuse key tokens/concepts from output and submit blocks.\n"
     "7. Faithfulness: summary must truthfully report what you did.\n"
     "8. Direction neutrality: summary looks back only, no future planning.\n"
     "9. Turn focus: summary describes ONLY this turn.\n"
     "10. Fluency: summary reads like natural language.\n"
-    "11. Compression: summary is shorter than the output+tool_call blocks combined.\n"
+    "11. Compression: summary is shorter than the output+submit blocks combined.\n"
     "12. No verbatim copy-paste: rephrase, don't lift 4+ word runs from earlier blocks.\n"
     "13. No internal repetition: avoid looping phrases within any block.\n"
-    "14. No malformed tool calls: every tool call must have valid, complete arguments.\n"
-    "15. No repeated tool calls: never emit the same (name, args) call twice in one turn.\n"
+    "14. No malformed tool calls: the submit call must have valid, complete arguments.\n"
+    "15. No repeated tool calls: never emit the same submit call twice in one turn.\n"
     "\n"
     "== REFLECT BLOCK GUIDANCE ==\n"
     "<reflect> is a chain-of-thought for THIS specific problem. Do not use a generic checklist. "
-    "Analyze what you actually computed, whether the arithmetic is correct, which tool calls you made, "
+    "Analyze what you actually computed, whether the arithmetic is correct, which submit call you made, "
     "and what specific facts/numbers the <turn_summary> must retain. "
     "Then write a concise <turn_summary> that is faithful, retrospective, and focused only on this turn."
 )
@@ -144,13 +149,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sft_lora_path",
         type=str,
-        default="outputs/scribe_sft/final_lora",
+        default="outputs/scribe_sft_submit_only/final_lora",
         help="Initial LoRA adapter from SFT",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="outputs/scribe_grpo",
+        default="outputs/scribe_grpo_submit_only",
         help="Directory for checkpoints and final adapter",
     )
     parser.add_argument(
@@ -363,7 +368,7 @@ async def rollout_one(
     args: argparse.Namespace,
 ) -> List[TurnRecord]:
     """Run one SCRIBE trajectory for a single task using the vLLM backend."""
-    env = make_gsm8k_env(
+    env = make_gsm8k_submit_only_env(
         item,
         workspace_root=Path(args.output_dir) / "rollout_ws" / item["task_id"],
         max_steps=args.max_steps_per_turn,

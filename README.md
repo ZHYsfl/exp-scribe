@@ -6,7 +6,7 @@ SCRIBE extends the classic ReAct loop with explicit `Reflect` and `Summarize` ph
 
 One trajectory is a loop,with many turns,and each turn with many steps.We don't need to worry about the number of steps will "burst" in a turn,because we have the sft data to warm up the model,and in rl phase its exploration space will not be too large to make the steps loop crazily in one turn.
 
-Our infra now can collect the rollout data,in threshold mode we can stop once the result of a turn exceeds the pass threshold.Each turn we have a reward,and a trajectory reward is associated with the reward of all turns.
+Our infra now can collect the rollout data. In threshold mode the loop stops as soon as the submitted answer is correct, or alternatively when the turn reward reaches the pass threshold. Each turn has its own reward, and a trajectory reward is computed from all turns.
 
 ## First ：the context engineering of each turn:
 
@@ -372,7 +372,7 @@ list[O/(list[A]+list[AR])]+S
 feedback_from_turn10
 list[T/O/(list[A]+list[AR])]+R+S,REWARD11
 
-REWARD11 exceeds threshold!!!In threshold mode,the loop stops.
+The submitted answer is correct (or REWARD11 exceeds threshold)!!! In threshold mode, the loop stops.
 ```
 
 ```text
