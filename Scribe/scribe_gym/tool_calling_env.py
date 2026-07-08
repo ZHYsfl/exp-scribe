@@ -1,4 +1,5 @@
 import asyncio
+import json
 from abc import abstractmethod
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
@@ -78,6 +79,13 @@ class ToolCallingScribeEnv(ScribeEnv):
     ) -> Dict[str, Any]:
         name = tool_call.get("name")
         arguments = tool_call.get("arguments", {})
+        # Robustness: models occasionally emit arguments as a JSON-encoded string
+        # instead of an object (e.g. {"arguments": "{\"command\": \"...\"}"}).
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except Exception:
+                arguments = {}
         if not isinstance(arguments, dict):
             arguments = {}
 
