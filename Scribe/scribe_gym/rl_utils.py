@@ -159,12 +159,16 @@ def build_training_samples(
     turns: List[TurnRecord],
     trajectory_advantage: float,
     tokenizer,
+    max_seq_length: int = 4096,
 ) -> List[Dict[str, Any]]:
     """Expand a trajectory into step-level GRPO training samples.
 
     The trajectory advantage is divided evenly across turns, then steps, then
     rollout tokens. Each sample corresponds to one LLM call and uses the exact
     prompt messages seen during rollout, so the chat-template boundaries match.
+
+    Samples whose full tokenized length exceeds ``max_seq_length`` are skipped
+    to avoid OOM during the GRPO log-prob backward on a single 24 GB GPU.
     """
     if not turns:
         return []
@@ -180,7 +184,7 @@ def build_training_samples(
 
         for step in steps:
             sample = _build_step_training_sample(step, step_credit, tokenizer)
-            if sample:
+            if sample and len(sample["input_ids"]) <= max_seq_length:
                 samples.append(sample)
 
     return samples

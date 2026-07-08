@@ -54,6 +54,7 @@ class GymBackedAgent(Agent):
         judge_temperature: float = 0.0,
         judge_semaphore: Optional[Any] = None,
         llm_backend: Optional[Any] = None,
+        max_tokens: int = 1536,
     ):
         # SCRIBE mode does not use the base class's tool-error retry prompt.
         # Tool error content is already present in the tool response messages;
@@ -72,6 +73,8 @@ class GymBackedAgent(Agent):
         # can wire them without touching env correctness logic.
         self.reward_config = reward_config or DEFAULT_TURN_REWARD_CONFIG
         self.token_counter = token_counter
+        # Max tokens for each LLM call (configurable to bound output/context cost).
+        self.max_tokens = max_tokens
         # LLM-as-judge for metrics 7-10. Explicit judge wins; otherwise optionally
         # auto-build one for parallel tasks. Judge credentials default to the
         # actor's client/model but can be overridden via JUDGE_* env vars.
@@ -122,14 +125,14 @@ class GymBackedAgent(Agent):
                 messages=messages,
                 tools=tools,
                 tool_choice=tool_choice,
-                max_tokens=2048,
+                max_tokens=self.max_tokens,
             )
         return await self.client.chat.completions.create(
             model=model,
             messages=messages,
             tools=tools,
             tool_choice=tool_choice,
-            max_tokens=2048,
+            max_tokens=self.max_tokens,
         )
 
     async def chat(self, observations: list[dict]) -> list[dict]:

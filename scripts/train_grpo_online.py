@@ -285,6 +285,18 @@ def parse_args() -> argparse.Namespace:
         default=1,
         help="Max concurrent vLLM rollouts (lower if you see Hermes 'Already borrowed' errors)",
     )
+    parser.add_argument(
+        "--max_tokens",
+        type=int,
+        default=1536,
+        help="Max tokens per LLM call during rollout",
+    )
+    parser.add_argument(
+        "--max_seq_length",
+        type=int,
+        default=4096,
+        help="Max tokenized sequence length for GRPO training samples; longer samples are skipped",
+    )
     return parser.parse_args()
 
 
@@ -365,6 +377,7 @@ async def rollout_one(
         llm_backend=backend,
         reward_config=DEFAULT_TURN_REWARD_CONFIG,
         token_counter=counter,
+        max_tokens=args.max_tokens,
     )
     runner = ScribeRunner(
         agent=agent,
@@ -568,7 +581,9 @@ def main():
             all_rewards.extend(rewards)
             advantages = compute_group_advantages(rewards)
             for turns, adv in zip(task_turns, advantages):
-                samples = build_training_samples(turns, adv, tokenizer)
+                samples = build_training_samples(
+                    turns, adv, tokenizer, max_seq_length=args.max_seq_length
+                )
                 all_samples.extend(samples)
 
         print(
@@ -583,6 +598,10 @@ def main():
 
         # 4. GRPO update.
         print("Running GRPO update...")
+        # Free rollout-side CUDA cache before the backward pass; vLLM and the
+        # rollout graph can leave fragmented allocations that compete with the
+        # training activation memory.
+        torch.cuda.empty_cache()
         for epoch in range(args.num_inner_epochs):
             metrics = do_grpo_update(
                 policy,
