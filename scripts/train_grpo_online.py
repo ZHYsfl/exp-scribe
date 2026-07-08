@@ -460,6 +460,11 @@ def main():
         args.base_model, args.sft_lora_path, bf16=args.bf16, fp16=args.fp16
     )
 
+    # Enable gradient checkpointing on the policy to fit long-context GRPO
+    # updates on a single GPU alongside the vLLM rollout server.
+    policy.enable_input_require_grads()
+    policy.gradient_checkpointing_enable()
+
     optimizer = torch.optim.AdamW(
         [p for p in policy.parameters() if p.requires_grad],
         lr=args.learning_rate,
