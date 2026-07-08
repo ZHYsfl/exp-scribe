@@ -863,3 +863,28 @@ So in a word,we can get list[Step] from a turn.
 So the chain is fixed: **trajectory_reward → (GRPO group) → trajectory_advantage → (÷turns) → turn credit → (÷steps) → step credit → (÷rollout tokens) → token credit**, and the token credit is what multiplies ∇log P(token) in the policy gradient.
 
 we have TOKEN-LEVEL CREDIT ASSIGNMENT,because the turn_summary has the token reuse ratio.
+
+## Operations Notes
+
+### vLLM runtime LoRA adapter loading
+
+If online GRPO crashes at `update_weights` with a 404 for `/v1/load_lora_adapter`:
+
+1. vLLM only registers the admin endpoint when the environment variable is set:
+   ```bash
+   VLLM_ALLOW_RUNTIME_LORA_UPDATING=1 vllm serve ... --enable-lora
+   ```
+2. The `VLLMBackend.base_url` already ends in `/v1`, so the backend must call
+   `/load_lora_adapter` (not `/v1/load_lora_adapter`) to form the correct URL
+   `http://localhost:8000/v1/load_lora_adapter`.
+
+Symptom before fix: `404 Not Found` for `.../v1/load_lora_adapter` (missing env)
+or `.../v1/v1/load_lora_adapter` (double `/v1`).
+
+### Submit-only ablation data quality gate
+
+For the submit-only SCRIBE ablation, the SFT collection script filters turns on
+the fly: only turns with `turn_reward >= 0.7` and `metric_4 (format) >= 0.8` are
+kept. This removes the common failure mode where the model writes literal SCRIBE
+tag names such as `<reflect>` inside a `<think>` block, which the parser treats
+as nested tags and rejects.
