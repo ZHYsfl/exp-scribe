@@ -91,7 +91,7 @@ SYSTEM_PROMPT = (
     "8. Keep outputs concise; avoid repeating the same phrase.\n"
     "9. Inside <think>...</think>, NEVER write literal SCRIBE tag names such as "
     "<reflect>, <turn_summary>, <tool_call>, <tool_response>, or <submit>. "
-    "<think> is for your own reasoning only; those tags only appear as real block delimiters in the output."
+    "<think> is for your own reasoning only; those tags only appear as real block delimiters in the output.\n"
     "\n"
     "== HOW TO MAXIMIZE YOUR REWARD (15 metrics) ==\n"
     "1. Answer correctly and end naturally: the last step must be non-tool, not truncated.\n"
@@ -145,6 +145,8 @@ async def collect_one(
     max_steps: int = 5,
     max_turns: int = 3,
     enable_judge: bool = False,
+    min_turn_reward: float = 0.7,
+    min_metric_4: float = 0.8,
 ) -> List[Dict[str, Any]]:
     api_key = os.getenv("LLM_API_KEY", "")
     model = os.getenv("LLM_MODEL", "deepseek-v4-pro")
@@ -174,6 +176,15 @@ async def collect_one(
 
     examples: List[Dict[str, Any]] = []
     for turn_idx, turn in enumerate(hm._turns):
+        # Data quality gate: only keep turns that are correct and well-formatted.
+        bd = turn.reward_breakdown
+        m4 = getattr(bd, "metric_4", 1.0) if bd is not None else 1.0
+        if turn.reward < min_turn_reward or m4 < min_metric_4:
+            print(
+                f"  skip turn {turn_idx}: reward={turn.reward:.3f}, m4={m4:.3f} "
+                f"(below gate reward>={min_turn_reward}, m4>={min_metric_4})"
+            )
+            continue
         steps = expand_turn(turn)
         for step_idx, step in enumerate(steps):
             ex = step_to_training_example(
@@ -195,6 +206,8 @@ async def main(
     max_turns: int = 3,
     output_path: Optional[str] = None,
     enable_judge: bool = False,
+    min_turn_reward: float = 0.7,
+    min_metric_4: float = 0.8,
 ):
     items = load_gsm8k("train", "main", limit=num_samples)
     if output_path is None:
@@ -203,6 +216,7 @@ async def main(
     print(f"Collecting SFT rollouts for {len(items)} GSM8K samples...")
     print(f"Teacher model: {os.getenv('LLM_MODEL', 'deepseek-v4-pro')}")
     print(f"LLM-as-judge enabled: {enable_judge}")
+    print(f"Quality gate: reward>={min_turn_reward}, m4>={min_metric_4}")
     print(f"Output: {output_path}")
     print("=" * 70)
 
@@ -219,6 +233,8 @@ async def main(
                 examples = await collect_one(
                     item, max_steps=max_steps, max_turns=max_turns,
                     enable_judge=enable_judge,
+                    min_turn_reward=min_turn_reward,
+                    min_metric_4=min_metric_4,
                 )
                 for ex in examples:
                     f.write(json.dumps(ex, ensure_ascii=False) + "\n")
@@ -247,6 +263,10 @@ if __name__ == "__main__":
                         help="Output JSONL path (default: <repo-root>/data/gsm8k_sft_steps_submit_only.jsonl).")
     parser.add_argument("--enable_judge", action="store_true",
                         help="Enable LLM-as-judge for metrics 7-10 (extra API calls).")
+    parser.add_argument("--min_turn_reward", type=float, default=0.7,
+                        help="Minimum turn reward for a turn to be kept in SFT data.")
+    parser.add_argument("--min_metric_4", type=float, default=0.8,
+                        help="Minimum metric_4 (format) score for a turn to be kept.")
     args = parser.parse_args()
 
     asyncio.run(main(
@@ -255,4 +275,6 @@ if __name__ == "__main__":
         max_turns=args.max_turns,
         output_path=args.output,
         enable_judge=args.enable_judge,
+        min_turn_reward=args.min_turn_reward,
+        min_metric_4=args.min_metric_4,
     ))
