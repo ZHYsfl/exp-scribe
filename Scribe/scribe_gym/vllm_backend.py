@@ -285,7 +285,7 @@ class VLLMBackend(AsyncOpenAI):
         """
         import httpx
 
-        url = f"{str(self.base_url).rstrip('/')}/load_lora_adapter"
+        url = f"{str(self.base_url).rstrip('/')}/v1/load_lora_adapter"
         payload = {
             "lora_name": self.lora_name,
             "lora_path": lora_path,
