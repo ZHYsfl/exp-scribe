@@ -171,7 +171,7 @@ async def collect_one(
                 step, item["task_id"], turn_idx, step_idx, turn.reward
             )
             ex["right_answer"] = item["right_answer"]
-            ex["submitted_answer"] = turn.step_records[-1].raw_assistant_message.get(
+            ex["final_assistant_content"] = turn.step_records[-1].raw_assistant_message.get(
                 "content", ""
             ) if turn.step_records else ""
             examples.append(ex)
