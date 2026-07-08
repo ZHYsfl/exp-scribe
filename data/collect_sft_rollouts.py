@@ -180,7 +180,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_samples", type=int, default=4)
+    parser.add_argument("--num_samples", type=int, default=100)
     parser.add_argument("--max_steps", type=int, default=5)
     parser.add_argument("--max_turns", type=int, default=3)
     parser.add_argument("--output", default=None,

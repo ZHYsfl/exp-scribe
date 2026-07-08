@@ -147,7 +147,7 @@ class GymBackedAgent(Agent):
         # data has zero drift — step.input is exactly what the model saw.
         msgs = list(turn_input)
         while True:
-            print("\033[94mThinking...\033[0m")
+            print("Thinking...")
             response = await self._call_llm(
                 model=self.config.model,
                 messages=msgs,
@@ -272,6 +272,10 @@ class GymBackedAgent(Agent):
 
         obs, reward, terminated, truncated, info = await self._env_step(action)
 
+        tool_results = info.get("tool_results", [])
+        if tool_results:
+            print(f"[Tool results] {tool_results}")
+
         if self.debug:
             print(
                 f"[Debug] reward={reward} terminated={terminated} truncated={truncated}"
@@ -293,7 +297,10 @@ class GymBackedAgent(Agent):
             return obs, []
 
         message_tool_calls = message.get("tool_calls", [])
-        tool_messages = build_tool_messages(message_tool_calls, info)
+        # When using plain-text tool parsing, the OpenAI message does not carry
+        # tool_calls; we fall back to the tool_calls extracted from the content.
+        tool_calls_for_messages = message_tool_calls or parsed_tool_calls
+        tool_messages = build_tool_messages(tool_calls_for_messages, info)
         return obs, tool_messages
 
     async def _get_tool_response_observations(self, response) -> List[Dict[str, Any]]:
