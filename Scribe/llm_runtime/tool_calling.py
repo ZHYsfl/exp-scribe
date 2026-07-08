@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import json
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Dict
 
 from openai import AsyncOpenAI
 
@@ -9,6 +9,29 @@ from ._models import LLMConfig, Tool
 
 if TYPE_CHECKING:
     from .observation_compressor import ObservationCompressor
+
+
+def merge_reasoning_content(message: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert DeepSeek-style ``reasoning_content`` into a SCRIBE ``<think>`` block.
+
+    Some APIs return chain-of-thought in a separate ``reasoning_content`` field
+    instead of inside ``content``. SCRIBE expects reasoning as
+    ``<think>...</think>`` in the assistant's content so the parser can treat it
+    as a THINK block. This helper normalizes such messages once, right after
+    receiving them from the API.
+    """
+    msg = dict(message)
+    reasoning = msg.get("reasoning_content")
+    if isinstance(reasoning, str):
+        reasoning = reasoning.strip()
+        if reasoning:
+            content = (msg.get("content") or "").strip()
+            if content:
+                msg["content"] = f"<think>\n{reasoning}\n</think>\n{content}"
+            else:
+                msg["content"] = f"<think>\n{reasoning}\n</think>"
+            msg.pop("reasoning_content", None)
+    return msg
 
 
 class Agent:
@@ -252,7 +275,9 @@ class Agent:
         # Handle the tool-call loop with automatic retries and mid-loop compression.
         while response.choices[0].finish_reason == "tool_calls":
             # Add the assistant tool_calls message.
-            observations_next.append(response.choices[0].message.model_dump())
+            observations_next.append(
+                merge_reasoning_content(response.choices[0].message.model_dump())
+            )
 
             # Execute all tool calls concurrently.
             tool_responses = await self._get_tool_response_observations(response)
@@ -305,7 +330,9 @@ class Agent:
         # added to the conversation (e.g. to step a gym env one last time).
         await self._on_final_response(response)
         # Add the final reply to observations.
-        observations_final.append(response.choices[0].message.model_dump())
+        observations_final.append(
+            merge_reasoning_content(response.choices[0].message.model_dump())
+        )
         # Compress the final list so the next turn starts within budget.
         observations_final = await self._compress_if_needed(observations_final)
         return observations_final

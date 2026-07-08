@@ -1,7 +1,7 @@
 """Public exports for the llm_runtime package."""
 
 from .structured import GenerateAttempt, StructuredGenerator
-from .tool_calling import Agent, LLMConfig, Tool
+from .tool_calling import Agent, LLMConfig, Tool, merge_reasoning_content
 from .batch import batch
 from .basic_linux_tools import create_basic_linux_tools, register_basic_linux_tools
 from .token_counter import DeepSeekTokenCounter, TokenCounter
@@ -25,4 +25,5 @@ __all__ = [
     "batch",
     "create_basic_linux_tools",
     "register_basic_linux_tools",
+    "merge_reasoning_content",
 ]

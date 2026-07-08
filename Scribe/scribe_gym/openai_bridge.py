@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from openai import AsyncOpenAI
 
-from ..llm_runtime import Agent, LLMConfig, StructuredGenerator
+from ..llm_runtime import Agent, LLMConfig, StructuredGenerator, merge_reasoning_content
 
 from .helpers import (
     build_tool_messages,
@@ -197,6 +197,7 @@ class GymBackedAgent(Agent):
             choice = response.choices[0]
             print(choice.message.content or "")
             message = choice.message.model_dump()
+            message = merge_reasoning_content(message)
             _, output_blocks, _ = message_to_scribe_blocks(message)
             is_tool_step = bool(message.get("tool_calls"))
 
