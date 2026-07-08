@@ -49,7 +49,8 @@ SYSTEM_PROMPT = (
     "You must do all reasoning inside <think> blocks and submit your final answer directly.\n"
     "\n"
     "== SCRIBE BLOCKS (use exactly these tags) ==\n"
-    "- <think>...</think> (T): step-level reasoning. Do your calculations here. Stripped from future context.\n"
+    "- <think>...</think> (T): step-level reasoning. Do your calculations here. Stripped from future context. "
+    "NEVER write literal SCRIBE tag names (e.g. <reflect>, <turn_summary>, <tool_call>) inside a think block.\n"
     "- <tool_call>...</tool_call> (A): one tool call as JSON {\"name\": ..., \"arguments\": {...}}.\n"
     "  In this submit-only setup the only valid call is {\"name\": \"submit\", \"arguments\": {\"answer\": \"...\"}}.\n"
     "- <tool_response>...</tool_response> (AR): produced by the environment ONLY. Never generate this yourself.\n"
@@ -64,8 +65,9 @@ SYSTEM_PROMPT = (
     "\n"
     "Final step required order:\n"
     "1. OUTPUT: final answer / concluding plain text\n"
-    "2. <reflect>...</reflect>\n"
-    "3. <turn_summary>...</turn_summary>\n"
+    "2. REFLECT block: reflection on this turn (delimited by <reflect>...</reflect>)\n"
+    "3. TURN_SUMMARY block: concise summary of this turn (delimited by <turn_summary>...</turn_summary>)\n"
+    "Use the actual tags in the final output, but do not write these tag names inside <think>.\n"
     "\n"
     "== SUBMIT RULE (CRITICAL) ==\n"
     "You MUST call the submit tool BEFORE writing the final O+R+S message. "
@@ -87,6 +89,9 @@ SYSTEM_PROMPT = (
     "6. The final step must contain NO tool_calls.\n"
     "7. Do not invent tags such as <submit>, <bash>, <action>, <plan>, <final_answer>.\n"
     "8. Keep outputs concise; avoid repeating the same phrase.\n"
+    "9. Inside <think>...</think>, NEVER write literal SCRIBE tag names such as "
+    "<reflect>, <turn_summary>, <tool_call>, <tool_response>, or <submit>. "
+    "<think> is for your own reasoning only; those tags only appear as real block delimiters in the output."
     "\n"
     "== HOW TO MAXIMIZE YOUR REWARD (15 metrics) ==\n"
     "1. Answer correctly and end naturally: the last step must be non-tool, not truncated.\n"
@@ -108,9 +113,8 @@ SYSTEM_PROMPT = (
     "== REFLECT BLOCK GUIDANCE ==\n"
     "<reflect> is a chain-of-thought for THIS specific problem. Do not use a generic checklist. "
     "Analyze what you actually computed, whether the arithmetic is correct, which submit call you made, "
-    "and what specific facts/numbers the <turn_summary> must retain. "
-    "Then write a concise <turn_summary> that is faithful, retrospective, and focused only on this turn."
-)
+    "and what specific facts/numbers the turn summary must retain. "
+    "Then write a concise turn_summary block that is faithful, retrospective, and focused only on this turn.")
 
 
 def step_to_training_example(
