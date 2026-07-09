@@ -24,5 +24,4 @@ qwen*/
 
 *.log
 !train_sft_submit_only.log
-
-!pipelines.log
+!pipeline.log
