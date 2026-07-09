@@ -154,6 +154,9 @@ class GymBackedAgent(Agent):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[str] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        **kwargs: Any,
     ) -> Any:
         """Route the LLM call to the configured backend.
 
@@ -161,20 +164,26 @@ class GymBackedAgent(Agent):
         use its wrapper so vLLM does not see ``tools=``/``tool_choice=``."""
         from .vllm_backend import VLLMBackend
 
+        extra: Dict[str, Any] = {"max_tokens": self.max_tokens, **kwargs}
+        if temperature is not None:
+            extra["temperature"] = temperature
+        if top_p is not None:
+            extra["top_p"] = top_p
+
         if isinstance(self.client, VLLMBackend):
             return await self.client.chat_completions_create(
                 model=model,
                 messages=messages,
                 tools=tools,
                 tool_choice=tool_choice,
-                max_tokens=self.max_tokens,
+                **extra,
             )
         return await self.client.chat.completions.create(
             model=model,
             messages=messages,
             tools=tools,
             tool_choice=tool_choice,
-            max_tokens=self.max_tokens,
+            **extra,
         )
 
     async def chat(self, observations: list[dict]) -> list[dict]:

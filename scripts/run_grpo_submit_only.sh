@@ -17,4 +17,4 @@ cd "$(dirname "$0")/.."
   --num_inner_epochs 1 --per_device_train_batch_size 1 --gradient_accumulation_steps 1 \
   --learning_rate 5e-6 --kl_coef 0.04 --clip_epsilon 0.2 --decay 0.8 \
   --max_steps_per_turn 5 --max_turns 3 --reward_threshold 1.0 \
-  --max_tokens 768 --max_seq_length 8192 --max_concurrent 1 --save_steps 1
+  --max_tokens 768 --max_seq_length 16384 --max_concurrent 1 --save_steps 1
