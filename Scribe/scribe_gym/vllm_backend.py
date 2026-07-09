@@ -252,6 +252,9 @@ class VLLMBackend(AsyncOpenAI):
 
         choice = response.choices[0]
         content = choice.message.content or ""
+        # Preserve reasoning_content for APIs that require it to be passed back
+        # in multi-turn conversations (e.g. DeepSeek-R1 style reasoning models).
+        reasoning_content = getattr(choice.message, "reasoning_content", None)
         tools_called, tool_calls, new_content = (
             HermesToolExtractor.extract_tool_calls(content)
         )
@@ -263,10 +266,12 @@ class VLLMBackend(AsyncOpenAI):
                 role="assistant",
                 content=new_content,
                 tool_calls=tool_calls,
+                reasoning_content=reasoning_content,
                 model_dump=lambda: {
                     "role": "assistant",
                     "content": new_content,
                     "tool_calls": tool_calls,
+                    "reasoning_content": reasoning_content,
                 },
             )
             choice_proxy = SimpleNamespace(

@@ -30,7 +30,11 @@ def merge_reasoning_content(message: Dict[str, Any]) -> Dict[str, Any]:
                 msg["content"] = f"<think>\n{reasoning}\n</think>\n{content}"
             else:
                 msg["content"] = f"<think>\n{reasoning}\n</think>"
-            msg.pop("reasoning_content", None)
+            # Reasoning models (e.g. DeepSeek-R1) require the original
+            # reasoning_content to be passed back in subsequent messages.
+            # We keep the field alongside the normalized content so the API
+            # gets both while SCRIBE parsers still see the <think> block.
+            msg["reasoning_content"] = reasoning
     return msg
 
 
