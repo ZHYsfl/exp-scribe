@@ -35,10 +35,13 @@ class Step:
            steps' O/A/AR accumulation). NEVER contains T/R.
     output: blocks this call generated. INCLUDES T (model-generated, loss=on).
             EXCLUDES AR (observation). The last step's output has R and S.
+    tools: optional OpenAI-style tool definitions active during this call. Used
+           to reconstruct the exact plain-text tool schema injected by backends.
     """
 
     input: List[Dict[str, Any]]
     output: List[ScribeBlock]
+    tools: Optional[List[Dict[str, Any]]] = None
 
 
 @dataclass
@@ -56,12 +59,15 @@ class StepRecord:
            + tool_call_id preserved) for downstream reconstruction.
     tool_messages: the tool-role response messages for this step's tool calls
            (with tool_call_id), in call order. Empty for the final non-tool step.
+    tools: OpenAI-style tool definitions active during this call, captured so
+           training can reconstruct the exact prompt the model saw.
     """
 
     input_messages: List[Dict[str, Any]]
     output_blocks: List[ScribeBlock]
     raw_assistant_message: Dict[str, Any]
     tool_messages: List[Dict[str, Any]] = field(default_factory=list)
+    tools: Optional[List[Dict[str, Any]]] = None
 
 
 @dataclass

@@ -53,10 +53,10 @@ def compute_grpo_loss(
     surrogate2 = clipped_ratio * token_credits
     policy_loss = -_masked_mean(torch.min(surrogate1, surrogate2), rollout_mask)
 
-    # Per-token KL using the standard log-ratio formulation.
+    # Per-token KL using the standard log-ratio estimator.
+    # KL(π_θ || π_ref) ≈ exp(log_ratio) - log_ratio - 1
     log_ratio = policy_logprobs - reference_logprobs.detach()
-    # KL(π_θ || π_ref) ≈ mean of log_ratio * exp(log_ratio)
-    kl_per_token = torch.exp(log_ratio) * log_ratio - log_ratio
+    kl_per_token = torch.exp(log_ratio) - log_ratio - 1.0
     kl_loss = _masked_mean(kl_per_token, rollout_mask)
 
     loss = policy_loss + beta * kl_loss

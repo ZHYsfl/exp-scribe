@@ -215,6 +215,7 @@ class GymBackedAgent(Agent):
                 input_messages=[dict(m) for m in msgs],
                 output_blocks=list(output_blocks),
                 raw_assistant_message=dict(message),
+                tools=self._get_tools(),
             )
             self._turn_step_records.append(rec)
 

@@ -52,7 +52,9 @@ def compute_group_advantages(
     """README Fourth: (reward - group_mean) / group_std."""
     arr = np.array(rewards, dtype=np.float32)
     mean = arr.mean()
-    std = arr.std()
+    # Use sample std (ddof=1) so small groups don't get artificially small
+    # variance and explode the advantage magnitudes.
+    std = arr.std(ddof=1)
     if std < eps or len(arr) < 2:
         return [0.0 for _ in rewards]
     return ((arr - mean) / (std + eps)).tolist()
