@@ -166,12 +166,10 @@ class VLLMBackend(AsyncOpenAI):
         base_url: vLLM server URL, e.g. ``http://localhost:8000/v1``.
         api_key: Optional API key (vLLM defaults ignore this).
         lora_name: Name of the LoRA module registered on the server.
-        plain_text_tools: If True, do not send ``tools=`` to vLLM; inject tool
-            schemas into the system prompt and parse ``<tool_call>`` blocks
-            locally. This avoids the Hermes parser concurrency bug.
-        tool_schema_renderer: Optional callable ``(tools) -> str`` that renders
-            OpenAI-style tool definitions into plain text for the system prompt.
-            If None, a default Qwen2.5-compatible renderer is used.
+        plain_text_tools: If True, do not send ``tools=`` to vLLM; the tool
+            schema is already embedded in the shared system prompt. Tool calls
+            are parsed locally from ``<tool_call>`` blocks to avoid the Hermes
+            parser concurrency bug.
     """
 
     def __init__(
@@ -180,42 +178,12 @@ class VLLMBackend(AsyncOpenAI):
         api_key: str = "vllm",
         lora_name: str = "scribe_adapter",
         plain_text_tools: bool = True,
-        tool_schema_renderer: Optional[Any] = None,
         timeout: Union[float, httpx.Timeout] = httpx.Timeout(None, connect=10.0, read=120.0, write=30.0),
     ):
         super().__init__(base_url=base_url, api_key=api_key, timeout=timeout)
         self.lora_name = lora_name
         self.base_url = base_url
         self.plain_text_tools = plain_text_tools
-        self.tool_schema_renderer = tool_schema_renderer or _tools_to_prompt_schema
-
-    def _inject_tool_schema(
-        self,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]],
-    ) -> List[Dict[str, Any]]:
-        """Append tool schemas to the system prompt for plain-text generation."""
-        schema_text = self.tool_schema_renderer(tools)
-        if not schema_text:
-            return messages
-        out: List[Dict[str, Any]] = []
-        injected = False
-        for msg in messages:
-            if msg.get("role") == "system" and not injected:
-                content = msg.get("content") or ""
-                if content:
-                    content = f"{content}\n\n{schema_text}"
-                else:
-                    # Match the chat template's behavior for an empty system
-                    # message: it keeps the leading newlines before # Tools.
-                    content = f"\n\n{schema_text}"
-                out.append({**msg, "content": content})
-                injected = True
-            else:
-                out.append(dict(msg))
-        if not injected:
-            out.insert(0, {"role": "system", "content": schema_text})
-        return out
 
     async def chat_completions_create(
         self,
@@ -229,10 +197,10 @@ class VLLMBackend(AsyncOpenAI):
         """Drop-in replacement for ``client.chat.completions.create``.
 
         When ``plain_text_tools`` is enabled, ``tools``/``tool_choice`` are
-        removed from the API call and tool schema is injected into the system
-        prompt. The response is then post-processed to reconstruct OpenAI-style
-        ``tool_calls`` from ``<tool_call>`` blocks using vLLM's extraction
-        logic.
+        removed from the API call — the tool schema is already embedded in the
+        shared system prompt. The response is post-processed to reconstruct
+        OpenAI-style ``tool_calls`` from ``<tool_call>`` blocks using vLLM's
+        extraction logic.
         """
         if not self.plain_text_tools:
             return await super().chat.completions.create(
@@ -243,7 +211,6 @@ class VLLMBackend(AsyncOpenAI):
                 **kwargs,
             )
 
-        messages = self._inject_tool_schema(messages, tools)
         response = await super().chat.completions.create(
             model=model,
             messages=messages,

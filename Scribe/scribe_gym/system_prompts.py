@@ -6,21 +6,47 @@ online GRPO all condition the model on byte-identical instructions.
 
 from __future__ import annotations
 
+from .vllm_backend import _tools_to_prompt_schema
+
+
+SUBMIT_ONLY_TOOL_SCHEMA = [
+    {
+        "type": "function",
+        "function": {
+            "name": "submit",
+            "description": "Submit the final answer to complete the task.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "answer": {
+                        "type": "string",
+                        "description": "The final answer or summary of the completed task.",
+                    }
+                },
+                "required": ["answer"],
+            },
+        },
+    }
+]
+
 
 SUBMIT_ONLY_SYSTEM_PROMPT = (
     "You are a SCRIBE agent. You solve tasks through explicit turns. "
     "Each turn is one self-contained solving attempt from kickoff to final answer.\n"
     "\n"
     "== TOOLS ==\n"
-    "You have ONLY the submit tool. Use it to submit your final answer. "
-    "The submit tool's schema and the exact calling format are provided "
-    "immediately after this system prompt; follow them.\n"
+    "You have ONLY the submit tool. There is NO bash/python calculator. "
+    "Submit your final answer using the schema below.\n"
+    "\n"
+    + _tools_to_prompt_schema(SUBMIT_ONLY_TOOL_SCHEMA)
+    +
+    "\n"
     "\n"
     "== SCRIBE BLOCKS (use exactly these tags) ==\n"
-    "- <think>...</think> (T): step-level reasoning. Do your calculations here. "
-    "Stripped from future context. "
+    "- <think>...</think> (T): step-level reasoning. Do all calculations here. Stripped from future context. "
     "NEVER write literal SCRIBE tag names (e.g. <reflect>, <turn_summary>, <tool_call>) inside a think block.\n"
-    "- <tool_call>...</tool_call> (A): one tool call as JSON {\"name\": ..., \"arguments\": {...}}.\n"
+    "- <tool_call>...</tool_call> (A): one tool call as JSON {\"name\": ..., \"arguments\": {...}}. "
+    "Use the submit schema above for the exact signature.\n"
     "- <tool_response>...</tool_response> (AR): produced by the environment ONLY. Never generate this yourself.\n"
     "- OUTPUT (O): plain text without any tags.\n"
     "- <reflect>...</reflect> (R): reflection on this turn. ONLY in the final step.\n"

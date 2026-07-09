@@ -23,57 +23,17 @@ from typing import Any, Dict, List, Optional
 
 from .parsers import ScribeBlock, ScribeBlockType
 from .turn_record import Step, TurnRecord
-from .vllm_backend import _tools_to_prompt_schema
-
-
-def _inject_tool_schema_into_messages(
-    messages: List[Dict[str, Any]],
-    tools: Optional[List[Dict[str, Any]]],
-) -> List[Dict[str, Any]]:
-    """Reconstruct the exact system prompt a plain-text-tools backend produced.
-
-    VLLMBackend injects the tool schema into the system prompt before sending it
-    to the model. step_record.input_messages is captured BEFORE that injection,
-    so training would otherwise see a different prompt than inference. This
-    helper appends the same schema text so step.input matches the model's actual
-    rollout prompt.
-    """
-    schema_text = _tools_to_prompt_schema(tools)
-    if not schema_text:
-        return [dict(m) for m in messages]
-
-    out: List[Dict[str, Any]] = []
-    injected = False
-    for msg in messages:
-        if msg.get("role") == "system" and not injected:
-            content = msg.get("content") or ""
-            if content:
-                content = f"{content}\n\n{schema_text}"
-            else:
-                content = f"\n\n{schema_text}"
-            out.append({**msg, "content": content})
-            injected = True
-        else:
-            out.append(dict(msg))
-    if not injected:
-        out.insert(0, {"role": "system", "content": schema_text})
-    return out
 
 
 def expand_turn(turn: TurnRecord) -> List[Step]:
     """Turn -> list[Step], using the captured 推理实况 (turn.step_records).
 
-    step.input  = StepRecord.input_messages with the tool schema the model saw
-                  during rollout (re-injected here for plain-text backends).
-    step.output = StepRecord.output_blocks    (raw, INCLUDES T — training target)
-    step.tools  = tools active during the call.
-
-    AR is excluded from step.output by construction (output_blocks is parsed
-    from the assistant message content, which contains no AR). No rebuild —
-    zero training/inference drift. Empty step_records -> empty list.
+    The shared system prompt already embeds the tool schema, so the captured
+    input_messages are exactly what the model saw during rollout. No rebuild,
+    no extra injection — zero training/inference drift.
     """
     return [Step(
-        input=_inject_tool_schema_into_messages(rec.input_messages, rec.tools),
+        input=[dict(m) for m in rec.input_messages],
         output=list(rec.output_blocks),
         tools=rec.tools,
     ) for rec in turn.step_records]

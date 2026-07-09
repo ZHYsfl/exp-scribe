@@ -34,7 +34,6 @@ from Scribe.scribe_gym import (
     VLLMBackend,
     render_scribe_blocks,
 )
-from Scribe.scribe_gym.step_expander import _inject_tool_schema_into_messages
 from Scribe.scribe_gym.system_prompts import SUBMIT_ONLY_SYSTEM_PROMPT
 from Scribe.scribe_gym.turn_record import StepRecord
 from Scribe.llm_runtime.token_counter import DeepSeekTokenCounter
@@ -55,18 +54,16 @@ def step_to_training_example(
 ) -> Dict[str, Any]:
     """Convert one captured StepRecord into a training example dict.
 
-    Data collection now uses the same VLLMBackend ``plain_text_tools`` path as
-    GRPO rollout, so the teacher actually sees the Qwen-style tool schema in its
-    system prompt. The captured ``input_messages`` are recorded *before* that
-    backend injection, so we re-inject the schema here to keep the training
-    input byte-identical to what the teacher (and rollout) saw.
+    The shared system prompt already embeds the tool schema, so the captured
+    ``input_messages`` are exactly the runtime prompt the teacher saw. We keep
+    them verbatim.
     """
     output_text = render_scribe_blocks(rec.output_blocks)
     return {
         "task_id": task_id,
         "turn_idx": turn_idx,
         "step_idx": step_idx,
-        "input_messages": _inject_tool_schema_into_messages(rec.input_messages, rec.tools),
+        "input_messages": [dict(m) for m in rec.input_messages],
         "output_text": output_text,
         "output_blocks": [
             {"type": b.type.name, "content": b.content} for b in rec.output_blocks
