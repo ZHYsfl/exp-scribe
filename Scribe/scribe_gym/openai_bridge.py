@@ -152,16 +152,15 @@ class GymBackedAgent(Agent):
         *,
         model: str,
         messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
-        tool_choice: Optional[str] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         **kwargs: Any,
     ) -> Any:
         """Route the LLM call to the configured backend.
 
-        If the backend is a ``VLLMBackend`` with plain-text tool mode enabled,
-        use its wrapper so vLLM does not see ``tools=``/``tool_choice=``."""
+        The tool schema is already embedded in the shared system prompt, so we
+        do not pass ``tools=`` / ``tool_choice=`` here.
+        """
         from .vllm_backend import VLLMBackend
 
         extra: Dict[str, Any] = {"max_tokens": self.max_tokens, **kwargs}
@@ -174,15 +173,11 @@ class GymBackedAgent(Agent):
             return await self.client.chat_completions_create(
                 model=model,
                 messages=messages,
-                tools=tools,
-                tool_choice=tool_choice,
                 **extra,
             )
         return await self.client.chat.completions.create(
             model=model,
             messages=messages,
-            tools=tools,
-            tool_choice=tool_choice,
             **extra,
         )
 
@@ -207,8 +202,6 @@ class GymBackedAgent(Agent):
             response = await self._call_llm(
                 model=self.config.model,
                 messages=msgs,
-                tools=self._get_tools(),
-                tool_choice="auto",
             )
             choice = response.choices[0]
             print(choice.message.content or "")

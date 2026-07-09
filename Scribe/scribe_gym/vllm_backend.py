@@ -190,24 +190,19 @@ class VLLMBackend(AsyncOpenAI):
         *,
         model: str,
         messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
-        tool_choice: Optional[str] = None,
         **kwargs: Any,
     ) -> Any:
         """Drop-in replacement for ``client.chat.completions.create``.
 
-        When ``plain_text_tools`` is enabled, ``tools``/``tool_choice`` are
-        removed from the API call — the tool schema is already embedded in the
-        shared system prompt. The response is post-processed to reconstruct
-        OpenAI-style ``tool_calls`` from ``<tool_call>`` blocks using vLLM's
-        extraction logic.
+        When ``plain_text_tools`` is enabled, the tool schema is already embedded
+        in the shared system prompt, so we just remove the server-side tool
+        parsing and reconstruct OpenAI-style ``tool_calls`` from
+        ``<tool_call>`` blocks locally.
         """
         if not self.plain_text_tools:
             return await super().chat.completions.create(
                 model=model,
                 messages=messages,
-                tools=tools,
-                tool_choice=tool_choice,
                 **kwargs,
             )
 
