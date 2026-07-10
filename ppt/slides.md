@@ -144,7 +144,7 @@ title: "01 · training-free 方法 (1/2)"
 <div class="page-title">01 · training-free 方法 — 不可能实现 loop engineering 的 token 效率提升</div>
 
 <div style="text-align:center;">
-<img src="/tf-1.png" style="max-height:460px;width:auto;margin:0 auto;display:block;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
+<img src="/tf-1.png" style="max-height:50vh;max-width:86%;width:auto;height:auto;object-fit:contain;margin:0 auto;display:block;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
 </div>
 
 <div class="cap" style="margin-top:0.6rem;">training-free 路径下，loop engineering 的 token 效率提升瓶颈（一）</div>
@@ -157,7 +157,7 @@ title: "01 · training-free 方法 (2/2)"
 <div class="page-title">01 · training-free 方法 — 不可能实现 loop engineering 的 token 效率提升</div>
 
 <div style="text-align:center;">
-<img src="/tf-2.png" style="max-height:460px;width:auto;margin:0 auto;display:block;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
+<img src="/tf-2.png" style="max-height:50vh;max-width:86%;width:auto;height:auto;object-fit:contain;margin:0 auto;display:block;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
 </div>
 
 <div class="cap" style="margin-top:0.6rem;">training-free 路径下，loop engineering 的 token 效率提升瓶颈（二）</div>
@@ -180,7 +180,7 @@ title: "02 · ReAct 训练方法"
 <div class="page-title">02 · training 方法 — 使用 ReAct 进行 loop engineering</div>
 
 <div style="text-align:center;">
-<img src="/react-method.png" style="max-height:470px;width:auto;margin:0 auto;display:block;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
+<img src="/react-method.png" style="max-height:50vh;max-width:86%;width:auto;height:auto;object-fit:contain;margin:0 auto;display:block;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
 </div>
 
 <div class="cap" style="margin-top:0.6rem;">broad ReAct：经典 Think→Act→Observe 循环作为 loop engineering 的训练范式</div>
@@ -203,7 +203,7 @@ title: "03 · ReAct 的问题"
 <div class="page-title">03 · training 方法 — 使用 ReAct 进行 loop engineering 的问题</div>
 
 <div style="text-align:center;">
-<img src="/react-problems.png" style="max-height:470px;width:auto;margin:0 auto;display:block;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
+<img src="/react-problems.png" style="max-height:50vh;max-width:86%;width:auto;height:auto;object-fit:contain;margin:0 auto;display:block;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
 </div>
 
 <div class="cap" style="margin-top:0.6rem;">broad ReAct 在长程 loop engineering 中暴露的问题</div>
@@ -226,7 +226,7 @@ title: "04 · SCRIBE 训练方法"
 <div class="page-title">04 · training 方法 — 使用 SCRIBE 进行 loop engineering</div>
 
 <div style="text-align:center;">
-<img src="/scribe-method.png" style="max-height:470px;width:auto;margin:0 auto;display:block;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
+<img src="/scribe-method.png" style="max-height:50vh;max-width:86%;width:auto;height:auto;object-fit:contain;margin:0 auto;display:block;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
 </div>
 
 <div class="cap" style="margin-top:0.6rem;">SCRIBE：在 ReAct 基础上为每个 turn 显式写入 Reflect (R) 与 Turn-Summary (S)</div>
@@ -630,7 +630,7 @@ title: "05 · turn9 -> turn10"
 <div>
 <div class="col-h">turn10 输入（context）</div>
 <div class="chip reuse">SP · system_prompt</div>
-<div class="chip comp">S ▸ sota-LLM 摘要（折叠 FUP+9 个 S+fb9）</div>
+<div class="chip comp">S ▸ sota-LLM 摘要（折叠 FUP + 10 个 S · fb0…fb9）</div>
 <div class="chip neu" style="margin-top:6px;">▸ rollout T/O/(A+AR)+R+S</div>
 <div class="cap" style="margin-top:3px;">REWARD10 ✗</div>
 </div>
