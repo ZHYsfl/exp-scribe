@@ -109,6 +109,14 @@ class HistoryManager:
     def num_turns(self) -> int:
         return len(self._turns)
 
+    @property
+    def last_turn(self) -> Optional[TurnRecord]:
+        """The most recently added turn, or None if no turns have been added.
+
+        Used by the agent at finalization time to read the previous turn's
+        submitted answer (-> metric 16) BEFORE the current turn is added."""
+        return self._turns[-1] if self._turns else None
+
     # -- cross-turn input build -------------------------------------------
 
     def build_input(self) -> List[Dict[str, Any]]:

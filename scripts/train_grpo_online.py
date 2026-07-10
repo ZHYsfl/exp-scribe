@@ -180,7 +180,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--group_size",
         type=int,
-        default=4,
+        default=6,
         help="Number of trajectories sampled per task",
     )
     parser.add_argument(
@@ -216,7 +216,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--kl_coef",
         type=float,
-        default=0.04,
+        default=0.06,
         help="KL penalty coefficient beta",
     )
     parser.add_argument(

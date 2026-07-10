@@ -706,6 +706,8 @@ the metric is low,that means the block does not repeat itself,otherwise the bloc
 
 15. **Repeated tool-call penalty** — penalize the model emitting the exact same `(name, normalized arguments)` tool call that was already executed earlier in this turn. Unlike metric 2b (which only penalizes parallel duplicates within one assistant message), this metric catches cross-step loops such as `bash {command: ls}` -> result -> `bash {command: ls}` again. Each repeated call incurs a fixed penalty (e.g. -0.08) and the metric is clamped to [0,1]. Perfect usage -> 1.0. Together with metric 14, this stops the common rollout failure mode where the model repeats or malforms tool calls and wastes steps until `max_steps_per_turn` truncates the turn.
 
+16. **Cross-turn duplicate submit penalty** - the only **cross-turn** penalty. Penalize the model re-submitting the *same* answer it already submitted in the **previous** turn. This catches the "stalling" failure mode where the model ignores feedback and resubmits an identical answer turn after turn without improving - a behavior that intra-turn metrics (2a/2b/15) cannot see. It triggers only when ALL three hold: (a) this turn submitted at least once (`submit_count >= 1`); (b) a previous turn exists and submitted an answer (`prev_turn_answer is not None`); (c) this turn's submitted answer equals the previous turn's answer (stripped). When triggered, score = `1.0 - cross_turn_dup_penalty` (e.g. 1.0 - 0.20); otherwise 1.0 - including the case where the two answers differ, which is exactly the "used feedback to improve" behavior we want to reward. The previous turn's answer is read off the `history_manager` at finalization time (before the current turn is added) and stored on the `TurnRecord` as `prev_turn_answer`, so the metric stays a pure function of `(turn, outcome, config)`. Note this is purposefully scoped to *duplicate submit of the same answer*, not cross-turn repeated tool calls in general: re-running a tool across turns is often legitimate (env state may have changed), whereas resubmitting an identical final answer is almost never productive.
+
 **Note：the 7,8,9,10 metric will be given completely in one llm call.** (Metric 11 is a pure statistical metric and stays out of this judge call — see its line "no LLM judge needed".)
 
 **Note：the reflect block is a cot process for model to let the latter turn_summary get higher reward.**
@@ -714,7 +716,7 @@ the metric is low,that means the block does not repeat itself,otherwise the bloc
 
 trajectory_reward = mean(turn_reward for turn in turns_used) * decay ** len(turns_used)
 
-where `turn_reward` is the turn-level reward of each turn (0~1, from the 15 metrics), `len(turns_used)` is the number of turns actually used in this trajectory, and `decay` is a discount factor in (0,1) (e.g. 0.8).
+where `turn_reward` is the turn-level reward of each turn (0~1, from the 16 metrics), `len(turns_used)` is the number of turns actually used in this trajectory, and `decay` is a discount factor in (0,1) (e.g. 0.8).
 
 We use the **mean** turn reward rather than only the final turn reward so that poor behavior in earlier turns is directly penalized. A trajectory that wastes early turns with malformed or repeated tool calls receives a lower trajectory reward even if the final turn eventually succeeds. The length decay still rewards solving in fewer turns: a 1-turn success gives `mean_reward * decay`, while a 3-turn success gives `mean_reward * decay^3`.
 

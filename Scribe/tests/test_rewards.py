@@ -1,4 +1,4 @@
-"""Unit tests for rewards.py — the 15 turn-level reward metrics.
+"""Unit tests for rewards.py — the 16 turn-level reward metrics.
 
 Builds TurnRecords the same way test_step_expander does (parse_scribe_blocks
 over scripted content). Injects a FakeCounter (chars as pseudo-tokens) so no
@@ -27,7 +27,7 @@ from Scribe.scribe_gym import (
 from Scribe.scribe_gym.parsers import parse_scribe_blocks
 from Scribe.scribe_gym.rewards import (
     metric_1, metric_2, metric_3, metric_4, metric_5, metric_6,
-    metric_11, metric_12, metric_13, metric_14, metric_15, metrics_7_10,
+    metric_11, metric_12, metric_13, metric_14, metric_15, metric_16, metrics_7_10,
 )
 from Scribe.scribe_gym.turn_record import StepRecord
 
@@ -413,6 +413,68 @@ def test_m15_repeated_penalty():
     assert metric_15(turn, oc, cfg) == 1.0 - cfg.repeated_call_penalty
 
 
+def _submit_turn(answer: str = "42") -> TurnRecord:
+    return build_turn([
+        ("tool", "o" + _tc("submit", {"answer": answer}), "c0", "ok"),
+        ("final", "o<reflect>r</reflect><turn_summary>s</turn_summary>")])
+
+
+def test_m16_no_prev_turn():
+    turn = _submit_turn("42")
+    turn.prev_turn_answer = None
+    oc = TurnOutcome(truncated=False, terminated=True, done_reason="no_tool_call",
+                     answer="42", right_answer="42", submit_count=1)
+    assert metric_16(turn, oc, DEFAULT_TURN_REWARD_CONFIG) == 1.0
+
+
+def test_m16_same_answer_penalty():
+    turn = _submit_turn("42")
+    turn.prev_turn_answer = "42"
+    oc = TurnOutcome(truncated=False, terminated=True, done_reason="no_tool_call",
+                     answer="42", right_answer="42", submit_count=1)
+    cfg = DEFAULT_TURN_REWARD_CONFIG
+    assert metric_16(turn, oc, cfg) == 1.0 - cfg.cross_turn_dup_penalty
+
+
+def test_m16_different_answer_no_penalty():
+    turn = _submit_turn("42")
+    turn.prev_turn_answer = "41"
+    oc = TurnOutcome(truncated=False, terminated=True, done_reason="no_tool_call",
+                     answer="42", right_answer="42", submit_count=1)
+    assert metric_16(turn, oc, DEFAULT_TURN_REWARD_CONFIG) == 1.0
+
+
+def test_m16_no_submit_no_penalty():
+    turn = _submit_turn("42")
+    turn.prev_turn_answer = "42"
+    oc = TurnOutcome(truncated=False, terminated=True, done_reason="no_tool_call",
+                     answer="42", right_answer="42", submit_count=0)
+    assert metric_16(turn, oc, DEFAULT_TURN_REWARD_CONFIG) == 1.0
+
+
+def test_m16_whitespace_ignored():
+    turn = _submit_turn("  42 ")
+    turn.prev_turn_answer = "42"
+    oc = TurnOutcome(truncated=False, terminated=True, done_reason="no_tool_call",
+                     answer="  42 ", right_answer="42", submit_count=1)
+    cfg = DEFAULT_TURN_REWARD_CONFIG
+    assert metric_16(turn, oc, cfg) == 1.0 - cfg.cross_turn_dup_penalty
+
+
+def test_final_submit_answer_returns_last_submit():
+    turn = build_turn([
+        ("tool", "o" + _tc("submit", {"answer": "first"}), "c0", "ok"),
+        ("tool", "o" + _tc("submit", {"answer": "second"}), "c1", "ok"),
+        ("final", "o<reflect>r</reflect><turn_summary>s</turn_summary>")])
+    assert turn.final_submit_answer == "second"
+
+
+def test_final_submit_answer_none_when_no_submit():
+    turn = build_turn([
+        ("final", "o<reflect>r</reflect><turn_summary>s</turn_summary>")])
+    assert turn.final_submit_answer is None
+
+
 # ---- aggregation ----
 def test_compute_turn_reward_clamps_and_weights():
     turn = build_turn([
@@ -433,7 +495,7 @@ def test_compute_turn_reward_clamps_and_weights():
           DEFAULT_TURN_REWARD_CONFIG.w9, DEFAULT_TURN_REWARD_CONFIG.w10,
           DEFAULT_TURN_REWARD_CONFIG.w11, DEFAULT_TURN_REWARD_CONFIG.w12,
           DEFAULT_TURN_REWARD_CONFIG.w13, DEFAULT_TURN_REWARD_CONFIG.w14,
-          DEFAULT_TURN_REWARD_CONFIG.w15]
+          DEFAULT_TURN_REWARD_CONFIG.w15, DEFAULT_TURN_REWARD_CONFIG.w16]
     assert abs(bd.total - sum(w * v for w, v in zip(ws, bd.metrics))) < 1e-9
 
 

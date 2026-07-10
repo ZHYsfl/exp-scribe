@@ -91,6 +91,11 @@ class TurnRecord:
     # Full 15-metric breakdown for debugging/ablation (set by finalize_turn
     # after compute_turn_reward). Optional to avoid importing rewards here.
     reward_breakdown: Optional[Any] = None
+    # The previous turn's final submitted answer, set by the agent at
+    # finalization time (read off the history_manager's last turn BEFORE this
+    # turn is added). Feeds metric 16 (cross-turn duplicate submit penalty).
+    # None on the first turn or when the previous turn never submitted.
+    prev_turn_answer: Optional[str] = None
 
     # ---- derived views (single source of truth = step_records) -------------
 
@@ -150,6 +155,29 @@ class TurnRecord:
             for rec in self.step_records
             for b in rec.output_blocks
         )
+
+    @property
+    def final_submit_answer(self) -> Optional[str]:
+        """The answer from this turn's LAST submit tool call, or None.
+
+        Scans step_records in reverse so the most recent submit wins (matching
+        the env, whose ``_answer`` is overwritten on each submit). Used to seed
+        the NEXT turn's ``prev_turn_answer`` for metric 16. Reads the submit
+        call's parsed arguments directly, so it is self-contained (no env/trajectory
+        dependency) and matches the TurnOutcome.answer the env reports.
+        """
+        for rec in reversed(self.step_records):
+            for b in reversed(rec.output_blocks):
+                if b.type != ScribeBlockType.TOOL_CALL:
+                    continue
+                parsed = b.parsed
+                if isinstance(parsed, dict) and parsed.get("name") == "submit":
+                    args = parsed.get("arguments", {})
+                    if isinstance(args, dict):
+                        ans = args.get("answer")
+                        if ans is not None:
+                            return str(ans)
+        return None
 
 
 def has_summary(new_blocks: List[ScribeBlock]) -> bool:

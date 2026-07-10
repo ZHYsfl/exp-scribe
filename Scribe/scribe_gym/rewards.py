@@ -1,8 +1,8 @@
-"""SCRIBE 15 turn-level reward metrics (pure functions).
+"""SCRIBE 16 turn-level reward metrics (pure functions).
 
 Given a TurnRecord (the turn's parsed blocks, single source of truth) and a
 TurnOutcome (termination/answer info pulled from the env trajectory at
-finalization time), compute the 15 README metrics, weighted-sum them into one
+finalization time), compute the 16 README metrics, weighted-sum them into one
 turn reward, and return a full breakdown for debugging / ablation.
 
 Design (my_project_philosophy.md): pure functions, no agent/env dependency,
@@ -88,28 +88,33 @@ Judge = Callable[[str, str], Union[SummaryJudgeScores, Awaitable[SummaryJudgeSco
 class TurnRewardConfig:
     # weights: designed so that a "perfect" turn (correct answer, clean format,
     # concise, good summary) scores close to 1.0, while each failure mode pulls
-    # the total down smoothly rather than clipping abruptly.
-    w1: float = 0.32   # answer + natural termination (dominant signal)
-    w2: float = 0.08   # tool usage (submit + parallel dup)
-    w3: float = 0.04   # step length
-    w4: float = 0.12   # format
-    w5: float = 0.02   # rollout tokens
-    w6: float = 0.10   # token reuse ratio
-    w7: float = 0.04   # faithfulness (judge)
-    w8: float = 0.04   # direction neutrality (judge)
-    w9: float = 0.04   # turn focus (judge)
-    w10: float = 0.04  # fluency (judge)
-    w11: float = 0.03  # compression ratio
-    w12: float = 0.03  # cross-block n-gram overlap
-    w13: float = 0.02  # intra-block n-gram overlap
-    w14: float = 0.04  # malformed tool-call penalty
-    w15: float = 0.04  # repeated tool-call penalty
+    # the total down smoothly rather than clipping abruptly. Answer correctness
+    # (w1) is the dominant signal but not extreme; the summary-hack guard rails
+    # (w6/w11/w12/w13) are kept as symbolic/anti-copy signals rather than
+    # primary drivers. Sum of wi == 1.0.
+    w1: float = 0.52   # answer + natural termination (core dominant signal)
+    w2: float = 0.08   # tool usage (submit + parallel dup) - infrastructure
+    w3: float = 0.02   # step length - efficiency
+    w4: float = 0.10   # format - gatekeeper
+    w5: float = 0.02   # rollout tokens - efficiency
+    w6: float = 0.02   # token reuse ratio - symbolic, signal but not hackable
+    w7: float = 0.02   # faithfulness (judge)
+    w8: float = 0.02   # direction neutrality (judge)
+    w9: float = 0.02   # turn focus (judge)
+    w10: float = 0.02  # fluency (judge)
+    w11: float = 0.01  # compression ratio - symbolic
+    w12: float = 0.03  # cross-block n-gram overlap - anti copy-paste
+    w13: float = 0.03  # intra-block n-gram overlap - anti loop
+    w14: float = 0.02  # malformed tool-call penalty - infrastructure
+    w15: float = 0.02  # repeated tool-call penalty - infrastructure
+    w16: float = 0.05  # cross-turn duplicate submit penalty - anti stalling
     # penalty magnitudes
     truncation_penalty: float = 0.20
     submit_penalty: float = 0.15
     parallel_dup_penalty: float = 0.10
     malformed_call_penalty: float = 0.10
     repeated_call_penalty: float = 0.08
+    cross_turn_dup_penalty: float = 0.20
     # format violation penalties (staircase: mild violations shave points,
     # serious violations shave more, but a few minor issues don't collapse to 0)
     fmt_missing_type: float = 0.08
@@ -151,6 +156,7 @@ class TurnRewardBreakdown:
     metric_13: float = 0.0
     metric_14: float = 0.0
     metric_15: float = 0.0
+    metric_16: float = 0.0
     total: float = 0.0
     judge_used: bool = False
 
@@ -160,14 +166,14 @@ class TurnRewardBreakdown:
             self.metric_1, self.metric_2, self.metric_3, self.metric_4,
             self.metric_5, self.metric_6, self.metric_7, self.metric_8,
             self.metric_9, self.metric_10, self.metric_11, self.metric_12,
-            self.metric_13, self.metric_14, self.metric_15,
+            self.metric_13, self.metric_14, self.metric_15, self.metric_16,
         ]
 
     @property
     def weights(self) -> List[float]:
         c = DEFAULT_TURN_REWARD_CONFIG
         return [c.w1, c.w2, c.w3, c.w4, c.w5, c.w6,
-                c.w7, c.w8, c.w9, c.w10, c.w11, c.w12, c.w13, c.w14, c.w15]
+                c.w7, c.w8, c.w9, c.w10, c.w11, c.w12, c.w13, c.w14, c.w15, c.w16]
 
 
 # ---------------------------------------------------------------------------
@@ -599,6 +605,45 @@ def metric_15(turn: TurnRecord, oc: TurnOutcome, cfg: TurnRewardConfig) -> float
     return _clamp(1.0 - cfg.repeated_call_penalty * n, 0.0, 1.0)
 
 
+def metric_16(turn: TurnRecord, oc: TurnOutcome, cfg: TurnRewardConfig) -> float:
+    """Metric 16 - cross-turn duplicate submit penalty.
+
+    README 16: penalize the model re-submitting the *same* answer it already
+    submitted in the previous turn. This is the only cross-turn penalty - it
+    catches the "stalling" failure mode where the model ignores feedback and
+    resubmits an identical answer turn after turn without improving. It is
+    distinct from metric 2a (multiple submits within one turn), 2b (parallel
+    duplicates in one message), and 15 (cross-step repeated tool calls within
+    one turn) - all of those are intra-turn.
+
+    Trigger (ALL three must hold):
+      1. this turn submitted at least once (oc.submit_count >= 1);
+      2. a previous turn exists and submitted an answer
+         (turn.prev_turn_answer is not None);
+      3. this turn's submitted answer == the previous turn's answer (stripped).
+    When triggered, score = 1.0 - cfg.cross_turn_dup_penalty (clamped [0,1]).
+    Otherwise 1.0 (no penalty) - including the case where the two answers
+    differ, which is exactly the "used feedback to improve" behavior we reward.
+
+    prev_turn_answer is set on the TurnRecord by the agent at finalization
+    time (it reads the previous turn's final submit from the history_manager),
+    so this metric stays a pure function of (turn, outcome, config) - no
+    agent/env import. The current turn's answer comes from TurnOutcome (lifted
+    from the env trajectory), which equals the last submit's args.
+    """
+    if oc.submit_count < 1:
+        return 1.0
+    if turn.prev_turn_answer is None:
+        return 1.0
+    current_answer = (oc.answer or "").strip()
+    prev_answer = turn.prev_turn_answer.strip()
+    if not current_answer or not prev_answer:
+        return 1.0
+    if current_answer == prev_answer:
+        return _clamp(1.0 - cfg.cross_turn_dup_penalty, 0.0, 1.0)
+    return 1.0
+
+
 def build_judge_prompt(ground_truth: str, summary: str) -> List[Dict[str, str]]:
     """Messages for the ONE structured-output judge call backing metrics 7-10.
 
@@ -639,7 +684,7 @@ async def compute_turn_reward(
     judge: Optional[Judge] = None,
     token_counter: Any = None,
 ) -> TurnRewardBreakdown:
-    """Compute the 15 README turn metrics and weight them into one reward.
+    """Compute the 16 README turn metrics and weight them into one reward.
 
     metric_1  answer + natural termination + truncation penalty
     metric_2  tool usage (submit count + parallel identical dup)
@@ -656,6 +701,7 @@ async def compute_turn_reward(
     metric_13 intra-block n-gram overlap (within T/O/R/S blocks)
     metric_14 malformed tool-call penalty
     metric_15 repeated tool-call penalty
+    metric_16 cross-turn duplicate submit penalty
 
     total = clamp(Σ wi·metrici, 0..1). token_counter defaults to
     DeepSeekTokenCounter; judge=None -> judge sub-scores use cfg.judge_default.
@@ -682,10 +728,11 @@ async def compute_turn_reward(
         metric_13=metric_13(turn, token_counter, cfg),
         metric_14=metric_14(turn, outcome, cfg),
         metric_15=metric_15(turn, outcome, cfg),
+        metric_16=metric_16(turn, outcome, cfg),
         judge_used=judge_used,
     )
     ws = [cfg.w1, cfg.w2, cfg.w3, cfg.w4, cfg.w5, cfg.w6,
-          cfg.w7, cfg.w8, cfg.w9, cfg.w10, cfg.w11, cfg.w12, cfg.w13, cfg.w14, cfg.w15]
+          cfg.w7, cfg.w8, cfg.w9, cfg.w10, cfg.w11, cfg.w12, cfg.w13, cfg.w14, cfg.w15, cfg.w16]
     total = sum(w * v for w, v in zip(ws, bd.metrics))
     bd.total = _clamp(total, cfg.total_low, cfg.total_high)
     return bd
@@ -696,11 +743,26 @@ def build_structured_judge(generator: Any) -> Judge:
 
     The returned judge is async and suitable for parallel task execution.
     generator must provide an async ``generate(messages, schema)`` method that
-    returns a SummaryJudgeScores-compatible object (e.g. StructuredGenerator).
+    returns a Pydantic instance. StructuredGenerator requires a Pydantic
+    BaseModel schema (it calls ``model_validate_json``), so we use an internal
+    ``_JudgeScoresModel`` and convert to the plain-dataclass SummaryJudgeScores
+    that the reward module consumes - keeping SummaryJudgeScores a dataclass
+    (positional construction is used in unit tests).
     """
+    from pydantic import BaseModel
+
+    class _JudgeScoresModel(BaseModel):
+        faithfulness: float
+        direction_neutrality: float
+        turn_focus: float
+        fluency: float
+
     async def judge(ground_truth: str, summary: str) -> SummaryJudgeScores:
         msgs = build_judge_prompt(ground_truth, summary)
-        return await generator.generate(messages=msgs, schema=SummaryJudgeScores)
+        m = await generator.generate(messages=msgs, schema=_JudgeScoresModel)
+        return SummaryJudgeScores(
+            m.faithfulness, m.direction_neutrality, m.turn_focus, m.fluency
+        )
 
     return judge
 
@@ -711,5 +773,5 @@ __all__ = [
     "compute_turn_reward", "build_judge_prompt", "build_structured_judge",
     "metrics_7_10",
     "metric_1", "metric_2", "metric_3", "metric_4", "metric_5", "metric_6",
-    "metric_11", "metric_12", "metric_13", "metric_14", "metric_15",
+    "metric_11", "metric_12", "metric_13", "metric_14", "metric_15", "metric_16",
 ]

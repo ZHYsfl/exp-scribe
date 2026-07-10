@@ -117,14 +117,26 @@ class GymBackedAgent(Agent):
         self.token_counter = token_counter
         # Max tokens for each LLM call (configurable to bound output/context cost).
         self.max_tokens = max_tokens
-        # LLM-as-judge for metrics 7-10. Explicit judge wins; otherwise optionally
-        # auto-build one for parallel tasks. Judge credentials default to the
-        # actor's client/model but can be overridden via JUDGE_* env vars.
+        # LLM-as-judge for metrics 7-10. Resolution order for the judge endpoint:
+        #   1. explicit JUDGE_* env vars (override)
+        #   2. LLM_* env vars (the shared .env LLM config - e.g. deepseek-chat)
+        #   3. the actor's config (fallback)
+        # Using LLM_* by default means "the judge is just another LLM call to
+        # the configured model" - which is what Scribe/.env is for. In the
+        # online-GRPO trainer the actor is a local vLLM LoRA (not from .env), so
+        # this fallback correctly sends judge calls to the .env model instead of
+        # the dummy actor config.
         self.judge = judge
         if self.judge is None and enable_judge:
-            judge_api_key = os.getenv("JUDGE_API_KEY") or config.api_key
-            judge_base_url = os.getenv("JUDGE_BASE_URL") or config.base_url
-            judge_model = os.getenv("JUDGE_MODEL") or config.model
+            judge_api_key = (
+                os.getenv("JUDGE_API_KEY") or os.getenv("LLM_API_KEY") or config.api_key
+            )
+            judge_base_url = (
+                os.getenv("JUDGE_BASE_URL") or os.getenv("LLM_BASE_URL") or config.base_url
+            )
+            judge_model = (
+                os.getenv("JUDGE_MODEL") or os.getenv("LLM_MODEL") or config.model
+            )
             judge_client = AsyncOpenAI(
                 api_key=judge_api_key, base_url=judge_base_url
             )
@@ -263,6 +275,12 @@ class GymBackedAgent(Agent):
             reward=0.0,
             feedback=feedback,
         )
+        # Seed metric 16: the previous turn's final submitted answer. Read off
+        # the history_manager BEFORE adding this turn, so last_turn is genuinely
+        # the *previous* turn. None on the first turn / when the prior turn
+        # never submitted - metric_16 treats None as "no penalty".
+        prev = self.history_manager.last_turn
+        record.prev_turn_answer = prev.final_submit_answer if prev is not None else None
         record.reward = await self._compute_turn_reward(record)
         self.history_manager.add_turn(record)
         if feedback is not None:

@@ -18,7 +18,7 @@ Example (3090, 0.5B model):
         --output_dir outputs/scribe_grpo \
         --num_iterations 10 \
         --batch_size 4 \
-        --group_size 4 \
+        --group_size 6 \
         --num_inner_epochs 1
 """
 
@@ -28,6 +28,8 @@ import argparse
 import asyncio
 import copy
 import json
+import math
+import os
 import random
 import sys
 from collections import defaultdict
@@ -118,7 +120,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--group_size",
         type=int,
-        default=4,
+        default=6,
         help="Number of trajectories sampled per task",
     )
     parser.add_argument(
@@ -154,7 +156,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--kl_coef",
         type=float,
-        default=0.04,
+        default=0.06,
         help="KL penalty coefficient beta",
     )
     parser.add_argument(
@@ -320,6 +322,7 @@ async def rollout_one(
         reward_config=DEFAULT_TURN_REWARD_CONFIG,
         token_counter=counter,
         max_tokens=args.max_tokens,
+        enable_judge=args.enable_judge,
     )
     runner = ScribeRunner(
         agent=agent,

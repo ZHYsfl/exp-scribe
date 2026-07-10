@@ -145,7 +145,11 @@ async def run_episode():
     # rebuild now (post-episode) — last build_input was for turn1
     # Verify turn1's input (stored on turn record) has no 民主党/<reflect>
     turn1_input = hm._turns[1].input
+    # T/R are model-generated, so they can only leak via assistant messages.
+    # (The kickoff user message legitimately *mentions* the tags as instructions.)
     for m in turn1_input:
+        if m.get("role") != "assistant":
+            continue
         c = m.get("content", "") or ""
         assert THINK not in c, f"T leaked into turn1 input: {c}"
         assert "<reflect>" not in c
