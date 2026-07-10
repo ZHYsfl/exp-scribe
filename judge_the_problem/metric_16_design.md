@@ -15,7 +15,7 @@ Metric 16 旨在惩罚这种行为，鼓励模型在收到 feedback 后真正改
 
 同时满足以下三个条件时触发惩罚：
 1. **当前 turn 有 submit**：`oc.submit_count >= 1`
-2. **存在上一轮 turn**：`prev_turn_answer is not None`
+2. **存在上一轮 turn，且上轮turn有最终submit**：`prev_turn_answer is not None`
 3. **两轮答案相同**：`current_answer.strip() == prev_turn_answer.strip()`
 
 ### 计分规则
