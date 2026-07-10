@@ -65,6 +65,12 @@ def compute_grpo_loss(
         clip_frac = _masked_mean(
             ((ratio - 1.0).abs() > epsilon).float(), rollout_mask
         )
+        # Per-token drift peaks: a few extreme-ratio tokens can detonate k3's
+        # exp() while the mean KL looks calm. Surface the worst offender so the
+        # trainer can spot impending detonation (max_log_ratio / kl_max).
+        mask_bool = rollout_mask.bool()
+        masked_lr = log_ratio[mask_bool]
+        masked_kl = kl_per_token[mask_bool]
         metrics = {
             "grpo/loss": loss.item(),
             "grpo/policy_loss": policy_loss.item(),
@@ -72,6 +78,8 @@ def compute_grpo_loss(
             "grpo/clip_frac": clip_frac.item(),
             "grpo/mean_credit": _masked_mean(token_credits, rollout_mask).item(),
             "grpo/rollout_tokens": rollout_mask.sum().item(),
+            "grpo/max_log_ratio": masked_lr.abs().max().item() if masked_lr.numel() else 0.0,
+            "grpo/kl_max": masked_kl.max().item() if masked_kl.numel() else 0.0,
         }
 
     return loss, metrics

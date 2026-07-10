@@ -24,7 +24,7 @@ cd "$(dirname "$0")/.."
   --data_dir data/gsm8k --split train --num_iterations 50 --batch_size 4 --group_size 6 \
   --num_inner_epochs 1 --per_device_train_batch_size 1 --gradient_accumulation_steps 1 \
   --learning_rate 5e-6 --warmup_ratio 0.1 --lr_min_ratio 0.1 \
-  --kl_coef 0.06 --clip_epsilon 0.2 --decay 0.8 \
+  --kl_coef 0.06 --clip_epsilon 0.2 --max_grad_norm 1.0 --decay 0.8 \
   --max_steps_per_turn 5 --max_turns 3 --reward_threshold 1.0 \
   --max_tokens 768 --max_seq_length 16384 --max_concurrent 1 --save_steps 1 \
   --enable_judge --judge_max_concurrent 5

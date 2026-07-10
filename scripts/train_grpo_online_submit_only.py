@@ -166,6 +166,15 @@ def parse_args() -> argparse.Namespace:
         help="GRPO clipping epsilon",
     )
     parser.add_argument(
+        "--max_grad_norm",
+        type=float,
+        default=1.0,
+        help="Max gradient norm for clipping (bounds per-step policy drift; "
+             "0 disables). Standard RL safety - without it a single high-"
+             "advantage trajectory can shove the policy far from the ref and "
+             "detonate the k3 KL estimator (cf. iter-15 spike).",
+    )
+    parser.add_argument(
         "--decay",
         type=float,
         default=0.8,
@@ -518,6 +527,10 @@ def do_grpo_update(
 
     total_metrics: Dict[str, float] = defaultdict(float)
     n_batches = 0
+    # Drift peaks are global maxima, not means - track the worst token across
+    # all batches so a detonation isn't diluted by averaging.
+    max_log_ratio_peak = 0.0
+    kl_peak = 0.0
 
     for batch in loader:
         input_ids = batch["input_ids"].to(policy.device)
@@ -547,16 +560,29 @@ def do_grpo_update(
         loss.backward()
 
         if (n_batches + 1) % args.gradient_accumulation_steps == 0:
+            if args.max_grad_norm > 0:
+                torch.nn.utils.clip_grad_norm_(
+                    [p for p in policy.parameters() if p.requires_grad],
+                    args.max_grad_norm,
+                )
             optimizer.step()
             optimizer.zero_grad()
 
         for k, v in metrics.items():
             total_metrics[k] += v
+        max_log_ratio_peak = max(
+            max_log_ratio_peak, metrics.get("grpo/max_log_ratio", 0.0)
+        )
+        kl_peak = max(kl_peak, metrics.get("grpo/kl_max", 0.0))
         n_batches += 1
 
     if n_batches == 0:
         return {}
-    return {k: v / n_batches for k, v in total_metrics.items()}
+    result = {k: v / n_batches for k, v in total_metrics.items()}
+    # Overwrite the two drift peaks with global maxima (not batch-averaged).
+    result["grpo/max_log_ratio"] = max_log_ratio_peak
+    result["grpo/kl_max"] = kl_peak
+    return result
 
 
 def main():
