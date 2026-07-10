@@ -241,6 +241,52 @@ def parse_args() -> argparse.Namespace:
         default=4096,
         help="Max tokenized sequence length for GRPO training samples; longer samples are skipped",
     )
+    # ---- LR schedule: linear warmup then cosine anneal ----
+    parser.add_argument(
+        "--warmup_ratio",
+        type=float,
+        default=0.1,
+        help="Fraction of --num_iterations used for linear LR warmup (0 disables warmup).",
+    )
+    parser.add_argument(
+        "--lr_min_ratio",
+        type=float,
+        default=0.1,
+        help="Minimum LR as a fraction of --learning_rate (cosine anneal floor).",
+    )
+    # ---- LLM-as-judge for metrics 7-10 ----
+    parser.add_argument(
+        "--enable_judge",
+        action="store_true",
+        help="Enable the LLM-as-judge for metrics 7-10. The judge endpoint is "
+             "resolved from Scribe/.env (LLM_MODEL/LLM_BASE_URL/LLM_API_KEY, "
+             "e.g. deepseek-chat); the --judge_* flags below are optional "
+             "overrides.",
+    )
+    parser.add_argument(
+        "--judge_model",
+        type=str,
+        default=None,
+        help="Override the judge model (else LLM_MODEL from Scribe/.env).",
+    )
+    parser.add_argument(
+        "--judge_base_url",
+        type=str,
+        default=None,
+        help="Override the judge base URL (else LLM_BASE_URL from Scribe/.env).",
+    )
+    parser.add_argument(
+        "--judge_api_key",
+        type=str,
+        default=None,
+        help="Override the judge API key (else LLM_API_KEY from Scribe/.env).",
+    )
+    parser.add_argument(
+        "--judge_max_concurrent",
+        type=int,
+        default=5,
+        help="Max concurrent judge calls (per process) when --enable_judge is set.",
+    )
     return parser.parse_args()
 
 
@@ -250,6 +296,70 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def build_lr_lambda(num_iterations: int, warmup_ratio: float, lr_min_ratio: float):
+    """Linear warmup then cosine anneal -> LR multiplier (relative to peak LR).
+
+    warmup: linear from 1/warmup_steps up to 1.0 across the first warmup_steps
+            iterations (keeps the very first update non-zero).
+    anneal: cosine from 1.0 down to lr_min_ratio across the remaining iters.
+    Returns (lr_lambda, warmup_steps); lr_lambda is a function of the scheduler
+    step (the iteration index).
+    """
+    warmup_steps = max(0, round(warmup_ratio * num_iterations))
+    min_ratio = max(0.0, min(1.0, lr_min_ratio))
+    # Anneal spans iterations [warmup_steps, num_iterations-1]; the denominator
+    # is (last_index - warmup) so the final iteration maps to progress=1.0
+    # (i.e. LR reaches min_ratio exactly on the last step).
+    anneal_steps = max(1, num_iterations - warmup_steps - 1)
+
+    def lr_lambda(step: int) -> float:
+        if warmup_steps > 0 and step < warmup_steps:
+            return (step + 1) / warmup_steps
+        progress = (step - warmup_steps) / anneal_steps
+        progress = min(1.0, max(0.0, progress))
+        return min_ratio + 0.5 * (1.0 - min_ratio) * (1.0 + math.cos(math.pi * progress))
+
+    return lr_lambda, warmup_steps
+
+
+def aggregate_metric_vectors(
+    trajectories: List[List[TurnRecord]],
+) -> Dict[str, Any]:
+    """Mean of each of the 16 turn metrics across all turns this iteration.
+
+    Each TurnRecord carries a reward_breakdown (TurnRewardBreakdown). Averaging
+    metric_1..metric_16 over all turns makes per-metric behavior visible
+    alongside the scalar mean reward - e.g. metric_16 rising = less cross-turn
+    resubmitting, metric_4 rising = cleaner format. metric_1 > 0 is a proxy for
+    "answer correct" (correctness is a binary gate inside metric_1).
+    """
+    n_metrics = 16
+    sums = [0.0] * n_metrics
+    n_turns = 0
+    n_answer_correct = 0
+    n_judge_used = 0
+    for turns in trajectories:
+        for t in turns:
+            bd = t.reward_breakdown
+            if bd is None:
+                continue
+            n_turns += 1
+            vals = bd.metrics
+            for i in range(min(n_metrics, len(vals))):
+                sums[i] += vals[i]
+            if bd.metric_1 > 0.0:
+                n_answer_correct += 1
+            if getattr(bd, "judge_used", False):
+                n_judge_used += 1
+    means = [s / n_turns for s in sums] if n_turns else [0.0] * n_metrics
+    return {
+        "metric_means": {f"m{i + 1}": means[i] for i in range(n_metrics)},
+        "n_turns": n_turns,
+        "answer_correct_turn_frac": (n_answer_correct / n_turns) if n_turns else 0.0,
+        "judge_used_turn_frac": (n_judge_used / n_turns) if n_turns else 0.0,
+    }
 
 
 def load_models(base_model_path: str, sft_lora_path: str, bf16: bool = False, fp16: bool = False):
@@ -456,6 +566,42 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # LLM-as-judge (metrics 7-10): the judge is just another LLM call, so it
+    # uses the shared Scribe/.env config (LLM_MODEL/LLM_BASE_URL/LLM_API_KEY,
+    # e.g. deepseek-chat). GymBackedAgent resolves JUDGE_* -> LLM_* -> actor
+    # config; we load .env and only set JUDGE_* for explicit --judge_* overrides.
+    if args.enable_judge:
+        from dotenv import load_dotenv
+        env_path = REPO_ROOT / "Scribe" / ".env"
+        if env_path.is_file():
+            load_dotenv(env_path, override=True)
+        # Optional CLI overrides take precedence over .env.
+        if args.judge_model:
+            os.environ["JUDGE_MODEL"] = args.judge_model
+        if args.judge_base_url:
+            os.environ["JUDGE_BASE_URL"] = args.judge_base_url
+        if args.judge_api_key:
+            os.environ["JUDGE_API_KEY"] = args.judge_api_key
+        os.environ["JUDGE_MAX_CONCURRENT"] = str(args.judge_max_concurrent)
+        resolved_model = os.getenv("JUDGE_MODEL") or os.getenv("LLM_MODEL")
+        resolved_base = os.getenv("JUDGE_BASE_URL") or os.getenv("LLM_BASE_URL")
+        # Resolve the key with the same JUDGE_* -> LLM_* fallback the agent uses
+        # (openai_bridge.py). A missing key would otherwise silently fall back to
+        # the dummy actor config ("") -> API 401 -> metrics 7-10's try/except
+        # degrades to 0.5 defaults, so the judge runs but produces no signal.
+        resolved_key = os.getenv("JUDGE_API_KEY") or os.getenv("LLM_API_KEY")
+        if not resolved_model or not resolved_base or not resolved_key:
+            raise SystemExit(
+                "--enable_judge set but judge endpoint incomplete: set "
+                "LLM_MODEL/LLM_BASE_URL/LLM_API_KEY in Scribe/.env (or pass "
+                "--judge_model/--judge_base_url/--judge_api_key)."
+            )
+        print(
+            f"Judge enabled: model={resolved_model} @ {resolved_base} "
+            f"key=({'set' if resolved_key else 'MISSING'}) "
+            f"(max_concurrent={args.judge_max_concurrent})"
+        )
+
     # Save args for reproducibility.
     with open(output_dir / "args.json", "w", encoding="utf-8") as f:
         json.dump(vars(args), f, indent=2)
@@ -476,6 +622,18 @@ def main():
         weight_decay=args.weight_decay,
     )
 
+    # LR schedule: linear warmup then cosine anneal, driven by the iteration
+    # index. LambdaLR sets the initial lr to base_lr * lr_lambda(0), so the
+    # first iteration already uses the warmup starting value.
+    lr_lambda, warmup_steps = build_lr_lambda(
+        args.num_iterations, args.warmup_ratio, args.lr_min_ratio
+    )
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    print(
+        f"LR schedule: peak={args.learning_rate} warmup_steps={warmup_steps} "
+        f"min_ratio={args.lr_min_ratio} (cosine anneal over {args.num_iterations} iters)"
+    )
+
     print("Starting vLLM backend...")
     backend = VLLMBackend(
         base_url=args.vllm_base_url,
@@ -488,6 +646,12 @@ def main():
         data_dir=args.data_dir,
     )
     print(f"Loaded {len(train_items)} training items")
+
+    # Per-iteration metrics log: each line is one iteration's record (lr, mean
+    # reward, the full 16-metric mean vector, GRPO loss metrics, ...). Truncate
+    # at start so a re-run starts clean.
+    metrics_log_path = output_dir / "metrics_log.jsonl"
+    metrics_log_path.write_text("")
 
     global_step = 0
     for iteration in range(args.num_iterations):
@@ -531,14 +695,42 @@ def main():
                 )
                 all_samples.extend(samples)
 
+        mean_reward = float(np.mean(all_rewards)) if all_rewards else 0.0
+        std_reward = float(np.std(all_rewards)) if all_rewards else 0.0
         print(
             f"Collected {len(all_samples)} samples; "
-            f"mean reward = {np.mean(all_rewards):.3f}, "
-            f"std = {np.std(all_rewards):.3f}"
+            f"mean reward = {mean_reward:.3f}, std = {std_reward:.3f}"
         )
+
+        # Per-metric behavior vector (16 metrics) averaged over all turns this
+        # iteration - surfaces what the model is actually doing, not just the
+        # scalar reward.
+        agg = aggregate_metric_vectors(trajectories)
+        mm = agg["metric_means"]
+        print(
+            "  metrics mean: "
+            + " ".join(f"m{i}={mm[f'm{i}']:.3f}" for i in range(1, 17))
+            + f" | correct_turn_frac={agg['answer_correct_turn_frac']:.3f}"
+            + f" | judge_used={agg['judge_used_turn_frac']:.3f}"
+        )
+
+        current_lr = optimizer.param_groups[0]["lr"]
+        log_record: Dict[str, Any] = {
+            "iter": iteration,
+            "lr": current_lr,
+            "mean_reward": mean_reward,
+            "std_reward": std_reward,
+            "n_samples": len(all_samples),
+            "n_trajectories": len(trajectories),
+            **agg,
+            "grpo": {},
+        }
 
         if not all_samples:
             print("No valid samples, skipping update.")
+            with open(metrics_log_path, "a") as f:
+                f.write(json.dumps(log_record) + "\n")
+            scheduler.step()
             continue
 
         # 4. GRPO update.
@@ -558,6 +750,7 @@ def main():
             )
             print(f"  inner epoch {epoch}: {metrics}")
             global_step += 1
+        log_record["grpo"] = metrics
 
         # 5. Sync updated LoRA to vLLM.
         if (iteration + 1) % args.save_steps == 0 or iteration == args.num_iterations - 1:
@@ -565,6 +758,11 @@ def main():
             latest = output_dir / f"iter_{iteration}"
             backend.update_weights(str(latest))
             print(f"Synced vLLM to {latest}")
+
+        with open(metrics_log_path, "a") as f:
+            f.write(json.dumps(log_record) + "\n")
+        # Advance the LR schedule once per iteration (warmup -> cosine anneal).
+        scheduler.step()
 
     # Final save.
     final_path = output_dir / "final_lora"
