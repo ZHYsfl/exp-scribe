@@ -25,3 +25,10 @@ qwen*/
 *.log
 !train_sft_submit_only.log
 !pipeline.log
+
+node_modules/
+
+dist/
+
+package-lock.json
+package.json
