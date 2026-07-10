@@ -890,3 +890,67 @@ the fly: only turns with `turn_reward >= 0.7` and `metric_4 (format) >= 0.8` are
 kept. This removes the common failure mode where the model writes literal SCRIBE
 tag names such as `<reflect>` inside a `<think>` block, which the parser treats
 as nested tags and rejects.
+
+### Gradient clipping (KL-spike mitigation)
+
+Online GRPO bounds the optimizer step with gradient clipping in `do_grpo_update`
+(`scripts/train_grpo_online_submit_only.py`): after `loss.backward()` and before
+`optimizer.step()`, the L2 norm of all trainable (LoRA) gradients is capped by
+`--max_grad_norm` (default `1.0`; `0` disables):
+
+```python
+if (n_batches + 1) % args.gradient_accumulation_steps == 0:
+    if args.max_grad_norm > 0:
+        torch.nn.utils.clip_grad_norm_(
+            [p for p in policy.parameters() if p.requires_grad],
+            args.max_grad_norm,
+        )
+    optimizer.step()
+    optimizer.zero_grad()
+```
+
+**Why it was added.** The GRPO KL term uses the Schulman k3 estimator
+`kl = exp(δ) − δ − 1` with `δ = log π_policy − log π_ref`, where `π_ref` is the
+frozen SFT model (see `compute_grpo_loss` in `Scribe/scribe_gym/grpo_loss.py`).
+k3 is exponentially sensitive to positive `δ`: a few extreme-ratio tokens
+detonate the `exp()`, spiking the mean KL so that `β·KL` dominates the loss.
+The optimizer then overcorrects - yanking the policy back toward SFT - and
+accuracy crashes without recovery. This is *not* reward hacking (reward still
+tracks accuracy, `corr(m1, mean_reward) ≈ 0.97`); it is KL-penalty
+overcorrection from a frozen reference paired with an explosive estimator (the
+iter-15 spike).
+
+**How it works (no reference model needed).** `clip_grad_norm_` operates only on
+the `.grad` tensors already populated by `loss.backward()` - it never sees the
+reference model. The ref's influence is already baked into the gradient: in the
+forward pass `δ = log π_policy − log π_ref` enters the loss with `π_ref`
+detached, so backprop reaches only the (trainable) LoRA parameters; the frozen
+ref receives no gradients and is absent from the clip list. `clip_grad_norm_`
+just reads the total norm `√Σ‖p.grad‖²` and, if it exceeds `max_grad_norm`,
+rescales every gradient by `max_grad_norm / norm`. Two angles:
+
+- *SGD view:* per-step parameter displacement is bounded by
+  `lr × max_grad_norm`, so one pathological gradient cannot fling the policy
+  off in a single step.
+- *AdamW view (our optimizer):* Adam already self-normalizes each parameter's
+  step to ~`lr`, so clipping's real job here is to stop a detonating token's
+  huge gradient from contaminating the moment estimates `m`/`v`. Without
+  clipping, `v` stays inflated for several steps and freezes the affected
+  directions (the "yanked back, then stuck" non-recovery); with clipping there
+  is no contamination and recovery stays smooth.
+
+**Scope - per-step brake, not cumulative speed limit.** Clipping bounds the
+*per-step* displacement, not cumulative drift. A high LR with healthy gradients
+never trips the clip yet still accumulates large drift over many iterations;
+that is governed by the LR schedule (linear warmup + cosine anneal), not by
+clipping. The two are complementary: clipping is the per-step brake (prevents a
+single detonation), the LR schedule is the cumulative speed limit (prevents
+steady over-drift).
+
+**Drift diagnostics.** `compute_grpo_loss` also reports peak drift alongside the
+mean: `grpo/max_log_ratio` (max `|δ|` over rollout tokens) and `grpo/kl_max`
+(max per-token k3 KL). These are calibration meters for the clipping above -
+they should stay bounded when the clip is active - not a second alarm; the mean
+`grpo/kl` already alarms on detonation. The trainer tracks them as global maxima
+across micro-batches (in `do_grpo_update`), not averages, so a detonation is
+not diluted away.
