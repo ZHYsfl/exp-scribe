@@ -127,7 +127,7 @@ async def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_samples", type=int, default=50)
+    parser.add_argument("--num_samples", type=int, default=200)
     parser.add_argument("--base_url", default="http://localhost:8000/v1")
     parser.add_argument("--lora_name", default="scribe_adapter")
     parser.add_argument("--max_steps", type=int, default=5)
