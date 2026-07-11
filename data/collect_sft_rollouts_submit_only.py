@@ -149,8 +149,10 @@ async def main(
     enable_judge: bool = False,
     min_turn_reward: float = 0.7,
     min_metric_4: float = 0.9,
+    seed: Optional[int] = None,
+    concurrency: int = 5,
 ):
-    items = load_gsm8k("train", "main", limit=num_samples)
+    items = load_gsm8k("train", "main", limit=num_samples, seed=seed)
     if output_path is None:
         repo_root = Path(__file__).resolve().parent.parent
         output_path = str(repo_root / "data" / "gsm8k_sft_steps_submit_only.jsonl")
@@ -158,32 +160,46 @@ async def main(
     print(f"Teacher model: {os.getenv('LLM_MODEL', 'deepseek-v4-pro')}")
     print(f"LLM-as-judge enabled: {enable_judge}")
     print(f"Quality gate: reward>={min_turn_reward}, m4>={min_metric_4}")
+    print(f"Seed: {seed}")
+    print(f"Concurrency: {concurrency}")
     print(f"Output: {output_path}")
     print("=" * 70)
 
     out_file = Path(output_path)
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
+    sem = asyncio.Semaphore(concurrency)
     total_examples = 0
     total_turns = 0
 
     with open(out_file, "w", encoding="utf-8") as f:
-        for i, item in enumerate(items, 1):
-            print(f"\n[{i}/{len(items)}] {item['task_id']}")
-            try:
-                examples = await collect_one(
-                    item, max_steps=max_steps, max_turns=max_turns,
-                    enable_judge=enable_judge,
-                    min_turn_reward=min_turn_reward,
-                    min_metric_4=min_metric_4,
-                )
+        async def run_one(idx: int, item: Dict[str, Any]) -> List[Dict[str, Any]]:
+            async with sem:
+                print(f"\n[{idx}/{len(items)}] {item['task_id']}")
+                try:
+                    examples = await collect_one(
+                        item, max_steps=max_steps, max_turns=max_turns,
+                        enable_judge=enable_judge,
+                        min_turn_reward=min_turn_reward,
+                        min_metric_4=min_metric_4,
+                    )
+                except Exception as exc:
+                    print(f"  [{idx}/{len(items)}] {item['task_id']}: ERROR: {exc}")
+                    return []
+                # Synchronous writes (no await) -> safe under single-thread asyncio.
                 for ex in examples:
                     f.write(json.dumps(ex, ensure_ascii=False) + "\n")
-                total_examples += len(examples)
-                total_turns += max(ex["turn_idx"] for ex in examples) + 1 if examples else 0
-                print(f"  wrote {len(examples)} steps")
-            except Exception as exc:
-                print(f"  ERROR: {exc}")
+                f.flush()
+                print(f"  [{idx}/{len(items)}] {item['task_id']}: wrote {len(examples)} steps")
+                return examples
+
+        results = await asyncio.gather(
+            *(run_one(i, item) for i, item in enumerate(items, 1))
+        )
+
+    for examples in results:
+        total_examples += len(examples)
+        total_turns += max(ex["turn_idx"] for ex in examples) + 1 if examples else 0
 
     print("\n" + "=" * 70)
     print("SUMMARY")
@@ -208,6 +224,10 @@ if __name__ == "__main__":
                         help="Minimum turn reward for a turn to be kept in SFT data.")
     parser.add_argument("--min_metric_4", type=float, default=0.9,
                         help="Minimum metric_4 (format) score for a turn to be kept.")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for sampling a reproducible subset of the train split.")
+    parser.add_argument("--concurrency", type=int, default=5,
+                        help="Number of GSM8K samples to collect in parallel (async).")
     args = parser.parse_args()
 
     asyncio.run(main(
@@ -218,4 +238,6 @@ if __name__ == "__main__":
         enable_judge=args.enable_judge,
         min_turn_reward=args.min_turn_reward,
         min_metric_4=args.min_metric_4,
+        seed=args.seed,
+        concurrency=args.concurrency,
     ))

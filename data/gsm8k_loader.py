@@ -31,6 +31,7 @@ def load_gsm8k(
     config: str = "main",
     data_dir: str | Path | None = None,
     limit: Optional[int] = None,
+    seed: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Load GSM8K samples from local parquet.
 
@@ -39,7 +40,10 @@ def load_gsm8k(
         config: "main" or "socratic". We recommend "main" for SCRIBE training.
         data_dir: Directory containing `{config}_{split}.parquet`. Defaults to
             the `data/gsm8k` folder next to this script.
-        limit: If set, only return the first N samples.
+        limit: If set, only return the first N samples (after any seed shuffle).
+        seed: If set, shuffle the full split with this seed before applying
+            ``limit``, yielding a reproducible random subset instead of always
+            the first N rows. Original row indices (and thus task_ids) are kept.
 
     Returns:
         List of dicts with keys: task_id, task_description, right_answer, raw_answer.
@@ -50,6 +54,9 @@ def load_gsm8k(
         raise FileNotFoundError(f"GSM8K parquet not found: {path}")
 
     df = pd.read_parquet(path)
+    if seed is not None:
+        # Reproducible random subset; keeps original indices so task_ids stay stable.
+        df = df.sample(frac=1.0, random_state=seed)
     if limit is not None:
         df = df.head(limit)
 

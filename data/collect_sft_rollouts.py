@@ -18,7 +18,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -186,38 +186,54 @@ async def main(
     max_turns: int = 3,
     output_path: Optional[str] = None,
     enable_judge: bool = False,
+    seed: Optional[int] = None,
+    concurrency: int = 5,
 ):
-    items = load_gsm8k("train", "main", limit=num_samples)
+    items = load_gsm8k("train", "main", limit=num_samples, seed=seed)
     if output_path is None:
         repo_root = Path(__file__).resolve().parent.parent
         output_path = str(repo_root / "data" / "gsm8k_sft_steps.jsonl")
     print(f"Collecting SFT rollouts for {len(items)} GSM8K samples...")
     print(f"Teacher model: {os.getenv('LLM_MODEL', 'deepseek-v4-pro')}")
     print(f"LLM-as-judge enabled: {enable_judge}")
+    print(f"Seed: {seed}")
+    print(f"Concurrency: {concurrency}")
     print(f"Output: {output_path}")
     print("=" * 70)
 
     out_file = Path(output_path)
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
+    sem = asyncio.Semaphore(concurrency)
     total_examples = 0
     total_turns = 0
 
     with open(out_file, "w", encoding="utf-8") as f:
-        for i, item in enumerate(items, 1):
-            print(f"\n[{i}/{len(items)}] {item['task_id']}")
-            try:
-                examples = await collect_one(
-                    item, max_steps=max_steps, max_turns=max_turns,
-                    enable_judge=enable_judge,
-                )
+        async def run_one(idx: int, item: Dict[str, Any]) -> List[Dict[str, Any]]:
+            async with sem:
+                print(f"\n[{idx}/{len(items)}] {item['task_id']}")
+                try:
+                    examples = await collect_one(
+                        item, max_steps=max_steps, max_turns=max_turns,
+                        enable_judge=enable_judge,
+                    )
+                except Exception as exc:
+                    print(f"  [{idx}/{len(items)}] {item['task_id']}: ERROR: {exc}")
+                    return []
+                # Synchronous writes (no await) -> safe under single-thread asyncio.
                 for ex in examples:
                     f.write(json.dumps(ex, ensure_ascii=False) + "\n")
-                total_examples += len(examples)
-                total_turns += max(ex["turn_idx"] for ex in examples) + 1 if examples else 0
-                print(f"  wrote {len(examples)} steps")
-            except Exception as exc:
-                print(f"  ERROR: {exc}")
+                f.flush()
+                print(f"  [{idx}/{len(items)}] {item['task_id']}: wrote {len(examples)} steps")
+                return examples
+
+        results = await asyncio.gather(
+            *(run_one(i, item) for i, item in enumerate(items, 1))
+        )
+
+    for examples in results:
+        total_examples += len(examples)
+        total_turns += max(ex["turn_idx"] for ex in examples) + 1 if examples else 0
 
     print("\n" + "=" * 70)
     print("SUMMARY")
@@ -238,6 +254,10 @@ if __name__ == "__main__":
                         help="Output JSONL path (default: <repo-root>/data/gsm8k_sft_steps.jsonl).")
     parser.add_argument("--enable_judge", action="store_true",
                         help="Enable LLM-as-judge for metrics 7-10 (extra API calls).")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for sampling a reproducible subset of the train split.")
+    parser.add_argument("--concurrency", type=int, default=5,
+                        help="Number of GSM8K samples to collect in parallel (async).")
     args = parser.parse_args()
 
     asyncio.run(main(
@@ -246,4 +266,6 @@ if __name__ == "__main__":
         max_turns=args.max_turns,
         output_path=args.output,
         enable_judge=args.enable_judge,
+        seed=args.seed,
+        concurrency=args.concurrency,
     ))
