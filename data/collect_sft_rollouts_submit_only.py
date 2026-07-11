@@ -148,7 +148,7 @@ async def main(
     output_path: Optional[str] = None,
     enable_judge: bool = False,
     min_turn_reward: float = 0.7,
-    min_metric_4: float = 0.8,
+    min_metric_4: float = 0.9,
 ):
     items = load_gsm8k("train", "main", limit=num_samples)
     if output_path is None:
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_samples", type=int, default=100)
+    parser.add_argument("--num_samples", type=int, default=200)
     parser.add_argument("--max_steps", type=int, default=5)
     parser.add_argument("--max_turns", type=int, default=3)
     parser.add_argument("--output", default=None,
@@ -206,7 +206,7 @@ if __name__ == "__main__":
                         help="Enable LLM-as-judge for metrics 7-10 (extra API calls).")
     parser.add_argument("--min_turn_reward", type=float, default=0.7,
                         help="Minimum turn reward for a turn to be kept in SFT data.")
-    parser.add_argument("--min_metric_4", type=float, default=0.8,
+    parser.add_argument("--min_metric_4", type=float, default=0.9,
                         help="Minimum metric_4 (format) score for a turn to be kept.")
     args = parser.parse_args()
 
