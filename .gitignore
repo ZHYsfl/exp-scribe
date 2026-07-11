@@ -24,6 +24,7 @@ qwen*/
 
 *.log
 !train_sft_submit_only.log
+!train_grpo_submit_only.log
 !pipeline.log
 
 node_modules/

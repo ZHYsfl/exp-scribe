@@ -78,50 +78,50 @@ transition: slide-left
 title: "目录"
 ---
 
-<h1 style="color: #5a7a8a; font-weight: 400; font-size: 2.5rem; margin-bottom: 3rem;">目录</h1>
+<div class="sec-big" style="margin-bottom:1.3rem;">目录</div>
 
-<div style="display:flex;justify-content:center;gap:1.6rem;flex-wrap:wrap;max-width:1000px;margin:0 auto;">
+<div style="display:flex;justify-content:center;gap:1.05rem;flex-wrap:wrap;max-width:960px;margin:0 auto;">
 
-<div style="text-align:left;max-width:215px;">
-<div style="font-size:3.2rem;font-weight:300;color:#93c5fd;line-height:1;margin-bottom:0.4rem;">01</div>
-<div style="font-size:1.15rem;font-weight:500;color:#1e40af;margin-bottom:0.3rem;">training-free 方法</div>
-<div style="font-size:0.85rem;color:#6b7280;">不可能实现 loop engineering 的 token 效率提升</div>
+<div style="text-align:left;max-width:198px;">
+<div style="font-size:2.4rem;font-weight:300;color:#93c5fd;line-height:1;margin-bottom:0.28rem;">01</div>
+<div style="font-size:1.0rem;font-weight:500;color:#1e40af;margin-bottom:0.2rem;">training-free 方法</div>
+<div style="font-size:0.76rem;color:#6b7280;line-height:1.35;">不可能实现 loop engineering 的 token 效率提升</div>
 </div>
 
-<div style="text-align:left;max-width:215px;">
-<div style="font-size:3.2rem;font-weight:300;color:#86efac;line-height:1;margin-bottom:0.4rem;">02</div>
-<div style="font-size:1.15rem;font-weight:500;color:#047857;margin-bottom:0.3rem;">training 方法 · ReAct</div>
-<div style="font-size:0.85rem;color:#6b7280;">使用 ReAct 进行 loop engineering</div>
+<div style="text-align:left;max-width:198px;">
+<div style="font-size:2.4rem;font-weight:300;color:#86efac;line-height:1;margin-bottom:0.28rem;">02</div>
+<div style="font-size:1.0rem;font-weight:500;color:#047857;margin-bottom:0.2rem;">training 方法 · ReAct</div>
+<div style="font-size:0.76rem;color:#6b7280;line-height:1.35;">使用 ReAct 进行 loop engineering</div>
 </div>
 
-<div style="text-align:left;max-width:215px;">
-<div style="font-size:3.2rem;font-weight:300;color:#fdba74;line-height:1;margin-bottom:0.4rem;">03</div>
-<div style="font-size:1.15rem;font-weight:500;color:#9a3412;margin-bottom:0.3rem;">ReAct 的问题</div>
-<div style="font-size:0.85rem;color:#6b7280;">使用 ReAct 进行 loop engineering 的问题</div>
+<div style="text-align:left;max-width:198px;">
+<div style="font-size:2.4rem;font-weight:300;color:#fdba74;line-height:1;margin-bottom:0.28rem;">03</div>
+<div style="font-size:1.0rem;font-weight:500;color:#9a3412;margin-bottom:0.2rem;">ReAct 的问题</div>
+<div style="font-size:0.76rem;color:#6b7280;line-height:1.35;">使用 ReAct 进行 loop engineering 的问题</div>
 </div>
 
-<div style="text-align:left;max-width:215px;">
-<div style="font-size:3.2rem;font-weight:300;color:#c4b5fd;line-height:1;margin-bottom:0.4rem;">04</div>
-<div style="font-size:1.15rem;font-weight:500;color:#5b21b6;margin-bottom:0.3rem;">training 方法 · SCRIBE</div>
-<div style="font-size:0.85rem;color:#6b7280;">使用 SCRIBE 进行 loop engineering</div>
+<div style="text-align:left;max-width:198px;">
+<div style="font-size:2.4rem;font-weight:300;color:#c4b5fd;line-height:1;margin-bottom:0.28rem;">04</div>
+<div style="font-size:1.0rem;font-weight:500;color:#5b21b6;margin-bottom:0.2rem;">training 方法 · SCRIBE</div>
+<div style="font-size:0.76rem;color:#6b7280;line-height:1.35;">使用 SCRIBE 进行 loop engineering</div>
 </div>
 
-<div style="text-align:left;max-width:215px;">
-<div style="font-size:3.2rem;font-weight:300;color:#5eead4;line-height:1;margin-bottom:0.4rem;">05</div>
-<div style="font-size:1.15rem;font-weight:500;color:#0f766e;margin-bottom:0.3rem;">SCRIBE 上下文管理机制</div>
-<div style="font-size:0.85rem;color:#6b7280;">细述 turn 级上下文与 KV-cache 复用</div>
+<div style="text-align:left;max-width:198px;">
+<div style="font-size:2.4rem;font-weight:300;color:#5eead4;line-height:1;margin-bottom:0.28rem;">05</div>
+<div style="font-size:1.0rem;font-weight:500;color:#0f766e;margin-bottom:0.2rem;">SCRIBE 上下文管理机制</div>
+<div style="font-size:0.76rem;color:#6b7280;line-height:1.35;">细述 turn 级上下文与 KV-cache 复用</div>
 </div>
 
-<div style="text-align:left;max-width:215px;">
-<div style="font-size:3.2rem;font-weight:300;color:#fca5a5;line-height:1;margin-bottom:0.4rem;">06</div>
-<div style="font-size:1.15rem;font-weight:500;color:#991b1b;margin-bottom:0.3rem;">reward mechanism of a turn</div>
-<div style="font-size:0.85rem;color:#6b7280;">16 个 metric 与权重配比</div>
+<div style="text-align:left;max-width:198px;">
+<div style="font-size:2.4rem;font-weight:300;color:#fca5a5;line-height:1;margin-bottom:0.28rem;">06</div>
+<div style="font-size:1.0rem;font-weight:500;color:#991b1b;margin-bottom:0.2rem;">reward mechanism of a turn</div>
+<div style="font-size:0.76rem;color:#6b7280;line-height:1.35;">16 个 metric 与权重配比</div>
 </div>
 
-<div style="text-align:left;max-width:215px;">
-<div style="font-size:3.2rem;font-weight:300;color:#fde68a;line-height:1;margin-bottom:0.4rem;">07</div>
-<div style="font-size:1.15rem;font-weight:500;color:#92400e;margin-bottom:0.3rem;">abstract of our contribution</div>
-<div style="font-size:0.85rem;color:#6b7280;">小改动 → 上下文机制变化 → 衍生收益</div>
+<div style="text-align:left;max-width:198px;">
+<div style="font-size:2.4rem;font-weight:300;color:#fde68a;line-height:1;margin-bottom:0.28rem;">07</div>
+<div style="font-size:1.0rem;font-weight:500;color:#92400e;margin-bottom:0.2rem;">abstract of our contribution</div>
+<div style="font-size:0.76rem;color:#6b7280;line-height:1.35;">小改动 → 上下文机制变化 → 衍生收益</div>
 </div>
 
 </div>
@@ -689,7 +689,7 @@ title: "05 · 上下文机制定义 (1/2)"
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.7rem;max-width:64rem;margin:0 auto;">
 
 <div class="p-3 rounded-lg" style="background:#eff6ff;border:1px solid #bfdbfe;">
-<div style="font-weight:600;color:#1e40af;font-size:0.95rem;margin-bottom:0.3rem;">Block 标签与顺序</div>
+<div style="font-weight:600;color:#1e40af;font-size:0.95rem;margin-bottom:0.2rem;">Block 标签与顺序</div>
 <div style="font-size:0.78rem;color:#374151;line-height:1.5;">
 T=think · A=tool_call · O=output · R=reflect · S=turn_summary · AR=tool_response<br>
 一个 turn 的 rollout = <code>list[T/O/(list[A]+list[AR])] + R + S</code><br>
@@ -699,7 +699,7 @@ T=think · A=tool_call · O=output · R=reflect · S=turn_summary · AR=tool_res
 </div>
 
 <div class="p-3 rounded-lg" style="background:#f5f3ff;border:1px solid #ddd6fe;">
-<div style="font-weight:600;color:#5b21b6;font-size:0.95rem;margin-bottom:0.3rem;">Block 层 vs 消息层</div>
+<div style="font-weight:600;color:#5b21b6;font-size:0.95rem;margin-bottom:0.2rem;">Block 层 vs 消息层</div>
 <div style="font-size:0.78rem;color:#374151;line-height:1.5;">
 标签在 <b>block 层</b>始终保留（供解析器切分 ScribeBlock）<br>
 <b>消息层</b>（模型下次实际读到的）：<br>
@@ -711,7 +711,7 @@ T=think · A=tool_call · O=output · R=reflect · S=turn_summary · AR=tool_res
 </div>
 
 <div class="p-3 rounded-lg" style="background:#ecfdf5;border:1px solid #a7f3d0;">
-<div style="font-weight:600;color:#047857;font-size:0.95rem;margin-bottom:0.3rem;">压缩三规则</div>
+<div style="font-weight:600;color:#047857;font-size:0.95rem;margin-bottom:0.2rem;">压缩三规则</div>
 <div style="font-size:0.78rem;color:#374151;line-height:1.5;">
 ① <b>T&R 一次性</b>：生成后在下一步前剥离，永不进未来输入<br>
 ② <b>recent-k 保留</b>：recent-k（默认 k=3）之前的 turn 只保留 S（标签完整）<br>
@@ -720,7 +720,7 @@ T=think · A=tool_call · O=output · R=reflect · S=turn_summary · AR=tool_res
 </div>
 
 <div class="p-3 rounded-lg" style="background:#fffbeb;border:1px solid #fde68a;">
-<div style="font-weight:600;color:#92400e;font-size:0.95rem;margin-bottom:0.3rem;">无 S 兜底</div>
+<div style="font-weight:600;color:#92400e;font-size:0.95rem;margin-bottom:0.2rem;">无 S 兜底</div>
 <div style="font-size:0.78rem;color:#374151;line-height:1.5;">
 若某 turn 无 S（rollout 格式错）：<br>
 • 该 turn 老到只需保留 S 时 ➜ 改保留 <b>O + A</b><br>
@@ -742,7 +742,7 @@ title: "05 · 上下文机制定义 (2/2)"
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.7rem;max-width:64rem;margin:0 auto;">
 
 <div class="p-3 rounded-lg" style="background:#eff6ff;border:1px solid #bfdbfe;">
-<div style="font-weight:600;color:#1e40af;font-size:0.95rem;margin-bottom:0.3rem;">两个集合（关键区分）</div>
+<div style="font-weight:600;color:#1e40af;font-size:0.95rem;margin-bottom:0.2rem;">两个集合（关键区分）</div>
 <div style="font-size:0.78rem;color:#374151;line-height:1.5;">
 <b>Token-count 集合</b>（决定「是否压缩」）：整个输入 context = system_prompt + first_user_prompt + 所有 turn-feedback + 所有 input blocks，一起计数（<b>SP 也算</b>）<br>
 <b>Compression 集合</b>（决定「压缩什么」）：分阶段增长。<b>SP 永不压缩</b>（逐字保留——承载 task/protocol，须跨轨迹一致）
@@ -750,7 +750,7 @@ title: "05 · 上下文机制定义 (2/2)"
 </div>
 
 <div class="p-3 rounded-lg" style="background:#f5f3ff;border:1px solid #ddd6fe;">
-<div style="font-weight:600;color:#5b21b6;font-size:0.95rem;margin-bottom:0.3rem;">两阶段压缩</div>
+<div style="font-weight:600;color:#5b21b6;font-size:0.95rem;margin-bottom:0.2rem;">两阶段压缩</div>
 <div style="font-size:0.78rem;color:#374151;line-height:1.5;">
 <b>Stage1（收集 S）</b>：只动 input blocks，旧 turn 折叠为 S；FUP + feedbacks 逐字保留<br>
 <b>Stage2（sota-LLM，当 S 序列仍接近上限时触发）</b>：LLM 输入<b>包含</b> FUP + feedbacks，一起折叠进单个 &lt;turn_summary&gt;；返回 <code>{"summary":"..."}</code>，校验为恰好一个 turn_summary 块<br>
@@ -759,7 +759,7 @@ title: "05 · 上下文机制定义 (2/2)"
 </div>
 
 <div class="p-3 rounded-lg" style="background:#fef2f2;border:1px solid #fecaca;">
-<div style="font-weight:600;color:#991b1b;font-size:0.95rem;margin-bottom:0.3rem;">硬边界（Hard Boundary）</div>
+<div style="font-weight:600;color:#991b1b;font-size:0.95rem;margin-bottom:0.2rem;">硬边界（Hard Boundary）</div>
 <div style="font-size:0.78rem;color:#374151;line-height:1.5;">
 若<b>不可压缩前缀</b> = SP + FUP + 所有 feedbacks（所有 input block 已压成空）自身仍超上限 ➜ 压缩无能为力<br>
 此时 SCRIBE <b>抛错</b>：轨迹配置不可行（逐字保留部分单独溢出 context window）
@@ -767,7 +767,7 @@ title: "05 · 上下文机制定义 (2/2)"
 </div>
 
 <div class="p-3 rounded-lg" style="background:#ecfdf5;border:1px solid #a7f3d0;">
-<div style="font-weight:600;color:#047857;font-size:0.95rem;margin-bottom:0.3rem;">check-before-rollout 纪律</div>
+<div style="font-weight:600;color:#047857;font-size:0.95rem;margin-bottom:0.2rem;">check-before-rollout 纪律</div>
 <div style="font-size:0.78rem;color:#374151;line-height:1.5;">
 压缩是 <b>turn 级</b>（非 turn 内级）：<br>
 • 整个 input blocks 的 token 接近上限 ➜ rollout <b>前</b>自动触发压缩<br>
@@ -1234,7 +1234,7 @@ title: "06 · 16 metric 权重配比总结"
 </div>
 
 <div class="p-3 rounded-lg" style="background:#f9fafb;border:1px solid #e5e7eb;font-size:0.68rem;color:#374151;line-height:1.4;">
-<div style="font-weight:700;color:#5a7a8a;margin-bottom:0.3rem;">类别小计</div>
+<div style="font-weight:700;color:#5a7a8a;margin-bottom:0.2rem;">类别小计</div>
 • 核心 answer：M1 = <b>0.52</b><br>
 • 守门员 format：M4 = <b>0.10</b><br>
 • 基础设施 tool：M2+M14+M15 = <b>0.12</b><br>
