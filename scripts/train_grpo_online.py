@@ -53,7 +53,7 @@ from Scribe.scribe_gym import (
     ScribeRunner,
     VLLMBackend,
 )
-from Scribe.scribe_gym.grpo_loss import compute_grpo_loss, gather_logprobs
+from Scribe.scribe_gym.scribe_loss import compute_scribe_loss, gather_logprobs
 from Scribe.scribe_gym.rl_utils import (
     build_training_samples,
     compute_group_advantages,
@@ -483,7 +483,7 @@ def do_grpo_update(
             policy, input_ids, attention_mask, rollout_mask
         )
 
-        loss, metrics = compute_grpo_loss(
+        loss, metrics = compute_scribe_loss(
             policy_logprobs,
             ref_logprobs,
             token_credits,
