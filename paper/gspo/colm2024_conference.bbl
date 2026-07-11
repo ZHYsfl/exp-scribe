@@ -1,0 +1,49 @@
+\begin{thebibliography}{8}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[DeepSeek-AI(2025)]{dpsk-r1}
+DeepSeek-AI.
+\newblock Deepseek-r1: Incentivizing reasoning capability in llms via reinforcement learning.
+\newblock \emph{arXiv preprint arXiv:2501.12948}, 2025.
+
+\bibitem[MiniMax(2025)]{minimax-m1}
+MiniMax.
+\newblock Minimax-m1: Scaling test-time compute efficiently with lightning attention.
+\newblock \emph{arXiv preprint arXiv:2506.13585}, 2025.
+
+\bibitem[{OpenAI}(2024)]{o1}
+{OpenAI}.
+\newblock Learning to reason with {LLMs}, 2024.
+\newblock URL \url{https://openai.com/index/learning-to-reason-with-llms/}.
+
+\bibitem[Qwen(2025{\natexlab{a}})]{qwen3}
+Team Qwen.
+\newblock Qwen3 technical report.
+\newblock \emph{arXiv preprint arXiv:2505.09388}, 2025{\natexlab{a}}.
+
+\bibitem[Qwen(2025{\natexlab{b}})]{qwq32b}
+Team Qwen.
+\newblock Qwq-32b: Embracing the power of reinforcement learning, March 2025{\natexlab{b}}.
+\newblock URL \url{https://qwenlm.github.io/blog/qwq-32b/}.
+
+\bibitem[Schulman et~al.(2017)Schulman, Wolski, Dhariwal, Radford, and Klimov]{ppo}
+John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov.
+\newblock Proximal policy optimization algorithms.
+\newblock \emph{arXiv preprint arXiv:1707.06347}, 2017.
+
+\bibitem[Shao et~al.(2024)Shao, Wang, Zhu, Xu, Song, Bi, Zhang, Zhang, Li, Wu, and Guo]{grpo}
+Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, Y.~K. Li, Y.~Wu, and Daya Guo.
+\newblock Deepseekmath: Pushing the limits of mathematical reasoning in open language models.
+\newblock \emph{arXiv preprint arXiv:2402.03300}, 2024.
+
+\bibitem[Zheng et~al.(2023)Zheng, Ke, Zhang, and Huang]{click}
+Chujie Zheng, Pei Ke, Zheng Zhang, and Minlie Huang.
+\newblock Click: Controllable text generation with sequence likelihood contrastive learning.
+\newblock In \emph{Findings of the Association for Computational Linguistics: ACL 2023}, 2023.
+\newblock URL \url{https://aclanthology.org/2023.findings-acl.65/}.
+
+\end{thebibliography}
