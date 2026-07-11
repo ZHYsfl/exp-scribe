@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ITERS = [0, 10, 20, 30, 40, 47]
+ITERS = [0, 10, 20, 30, 36]
 
 summary: dict = {}
 for n in ITERS:
