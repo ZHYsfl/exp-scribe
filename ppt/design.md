@@ -49,8 +49,8 @@
 
 然后第六部分，
 
-06 training方法-the reward mechanism of a turn-metric x,(x被1-16代替)
-我们一共现在是16个metric,一个metric讲解一页，每个Metric说的很详细了，/root/autodl-tmp/README.md，你好好看好好做。然后这部分第17页是06 training方法-the reward mechanism of a turn，然后讲解这16个metric凑一起的权重配比（看代码）之类的总结。
+06 training方法-the reward mechanism of a turn
+这部分只起一页，总结这16个metric凑一起的权重配比（看代码）及设计哲学。16个metric的逐条详细说明见/root/autodl-tmp/README.md，不再单独成页（单页总览已足够展示）。
 你可以用颜色或其他技巧巧妙展示让机制展示得更清晰！
 
 ---
