@@ -126,7 +126,7 @@ class TurnRewardConfig:
     fmt_invalid_share_weight: float = 0.20
     # m5 rollout-token reference length. Default 8192 gives meaningful signal
     # for concise turns without clamping normal rollouts to 0 immediately.
-    rollout_token_ref: int = 8192
+    rollout_token_ref: int = 1024
     # n-gram size
     n_ngram: int = 4
     # judge default when judge is None
