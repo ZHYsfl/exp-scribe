@@ -101,6 +101,7 @@ async def main(
     lora_name: str = "scribe_adapter",
     max_steps: int = 5,
     max_turns: int = 3,
+    out_path: str = "outputs/eval_submit_only_results.json",
 ):
     items = load_gsm8k("test", "main", limit=num_samples)
     print(f"Evaluating {len(items)} GSM8K test samples...")
@@ -118,11 +119,13 @@ async def main(
     correct = sum(1 for r in results if r.get("correct"))
     print("\n" + "=" * 60)
     print(f"Accuracy: {correct}/{n} = {correct / n * 100:.1f}%")
-    out_path = REPO_ROOT / "outputs" / "eval_submit_only_results.json"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
+    out = Path(out_path)
+    if not out.is_absolute():
+        out = REPO_ROOT / out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    print(f"Saved per-sample results to {out_path}")
+    print(f"Saved per-sample results to {out}")
 
 
 if __name__ == "__main__":
@@ -132,6 +135,11 @@ if __name__ == "__main__":
     parser.add_argument("--lora_name", default="scribe_adapter")
     parser.add_argument("--max_steps", type=int, default=5)
     parser.add_argument("--max_turns", type=int, default=3)
+    parser.add_argument(
+        "--out_path",
+        default="outputs/eval_submit_only_results.json",
+        help="Where to write per-sample results (relative to repo root or absolute).",
+    )
     args = parser.parse_args()
     asyncio.run(main(
         num_samples=args.num_samples,
@@ -139,4 +147,5 @@ if __name__ == "__main__":
         lora_name=args.lora_name,
         max_steps=args.max_steps,
         max_turns=args.max_turns,
+        out_path=args.out_path,
     ))
