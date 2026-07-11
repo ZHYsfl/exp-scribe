@@ -77,6 +77,10 @@ def _build_step_training_sample(
     ``step.output`` is the raw blocks it generated. We render these as a
     two-message conversation (history + assistant message) so the chat template
     produces the same tokens as during rollout.
+
+    ``step_credit`` is the PER-TOKEN advantage for this step (uniform across
+    the step's rollout tokens, DAPO-pure). It is assigned directly to each
+    rollout token; the loss's masked_mean (1/Σ|o_i|) does the normalization.
     """
     # ``step.input`` is the exact message list the model saw before this step.
     prompt_messages = [dict(m) for m in step.input]
@@ -138,10 +142,14 @@ def _build_step_training_sample(
             for i, (tok_start, tok_end) in enumerate(offsets)
             if tok_start >= start and tok_end <= end
         ]
-        n_tokens = max(1, len(token_ids))
-        token_credit = step_credit / n_tokens
+        # DAPO-pure: step_credit IS the per-token advantage for this step
+        # (uniform across the step's rollout tokens). Do NOT divide by n_tokens:
+        # the loss's masked_mean (1/Σ|o_i|) is the sole normalization. Dividing
+        # here would double-normalize -- shrinking the signal ~1/n_tokens AND
+        # cancelling the step weighting in the node's total gradient (the
+        # step_weight would affect only direction, not magnitude).
         for tid in token_ids:
-            credits[tid] = token_credit
+            credits[tid] = step_credit
             mask[tid] = 1
 
     # Align to full sequence length (prompt tokens have zero credit/mask).
@@ -279,9 +287,10 @@ def build_tree_node_samples(
     n-ary tree rollout. ``advantage`` is the node's SIBLING-group advantage
     (turn_reward vs the n siblings sampled from the same parent state) - it is
     NOT divided by num_turns: there is no trajectory, each node is an
-    independent short-horizon GRPO problem. Within the node, the advantage is
-    split across steps by role (submit/summary/ordinary) and each step's credit
-    is then split uniformly across its rollout tokens by ``_build_step_training_sample``.
+    independent short-horizon GRPO problem. Within the node, the per-token
+    advantage for each step = advantage * step_role_weight (submit/summary/
+    ordinary), uniform across the step's tokens (DAPO-pure: no ÷n_tokens; the
+    loss's masked_mean is the sole normalization).
     """
     steps = expand_turn(turn)
     if not steps:
