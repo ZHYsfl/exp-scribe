@@ -156,7 +156,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--kl_coef",
         type=float,
-        default=0.06,
+        default=0.04,
         help="KL penalty coefficient beta",
     )
     parser.add_argument(
