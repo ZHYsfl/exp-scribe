@@ -1,7 +1,8 @@
 #!/bin/bash
 # Evaluate GRPO iter checkpoints (0,10,20,30,40,47) on 200 GSM8K test samples
-# each, using the already-running vLLM server on :8000 (LoRA adapters were
-# hot-loaded via /v1/load_lora_adapter). Greedy decoding -> fully reproducible.
+# each, using the already-running eval vLLM server on :8000 (all iter adapters
+# pre-registered via scripts/start_vllm_eval.sh). Greedy decoding -> reproducible;
+# --concurrency parallelizes samples against vLLM's batch (max-num-seqs 32).
 #
 # Run persistently:  nohup bash scripts/run_eval_grpo_iters.sh > outputs/eval_grpo_iters.log 2>&1 &
 
@@ -9,10 +10,11 @@ set -u
 cd /root/autodl-tmp
 PY=/root/.venv/bin/python
 ITERS="0 10 20 30 40 47"
+CONC=32
 
 echo "################################################"
 echo "# GRPO iter eval start: $(date)"
-echo "# iters=$ITERS  num_samples=200  greedy"
+echo "# iters=$ITERS  num_samples=200  greedy  concurrency=$CONC"
 echo "################################################"
 
 for N in $ITERS; do
@@ -22,6 +24,7 @@ for N in $ITERS; do
   $PY scripts/eval_submit_only.py \
     --lora_name "iter_$N" \
     --num_samples 200 \
+    --concurrency "$CONC" \
     --out_path "outputs/eval_grpo_iter_$N.json" 2>&1
   rc=$?
   echo "exit_code=$rc end: $(date)"

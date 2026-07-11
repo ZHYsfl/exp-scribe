@@ -102,18 +102,30 @@ async def main(
     max_steps: int = 5,
     max_turns: int = 3,
     out_path: str = "outputs/eval_submit_only_results.json",
+    concurrency: int = 1,
 ):
     items = load_gsm8k("test", "main", limit=num_samples)
-    print(f"Evaluating {len(items)} GSM8K test samples...")
-    results: List[Dict[str, Any]] = []
-    for i, item in enumerate(items, 1):
-        print(f"\n[{i}/{len(items)}] {item['task_id']}")
-        res = await eval_one(item, base_url, lora_name, max_steps, max_turns)
-        results.append(res)
-        status = "✓" if res.get("correct") else "✗"
-        ans = res.get("answer")
-        ra = res.get("right_answer")
-        print(f"  {status} answer={ans!r} right={ra!r}")
+    print(f"Evaluating {len(items)} GSM8K test samples (lora={lora_name}, concurrency={concurrency})...")
+    sem = asyncio.Semaphore(concurrency)
+    done_box = [0]
+    done_lock = asyncio.Lock()
+
+    async def run_one(item: Dict[str, Any]) -> Dict[str, Any]:
+        async with sem:
+            res = await eval_one(item, base_url, lora_name, max_steps, max_turns)
+        async with done_lock:
+            done_box[0] += 1
+            cur = done_box[0]
+        if "error" in res:
+            print(f"[{cur}/{len(items)}] {item['task_id']} ERROR {res['error']}")
+        else:
+            status = "✓" if res.get("correct") else "✗"
+            ans = res.get("answer")
+            ra = res.get("right_answer")
+            print(f"[{cur}/{len(items)}] {item['task_id']} {status} answer={ans!r} right={ra!r}")
+        return res
+
+    results = list(await asyncio.gather(*(run_one(item) for item in items)))
 
     n = len(results)
     correct = sum(1 for r in results if r.get("correct"))
@@ -140,6 +152,10 @@ if __name__ == "__main__":
         default="outputs/eval_submit_only_results.json",
         help="Where to write per-sample results (relative to repo root or absolute).",
     )
+    parser.add_argument(
+        "--concurrency", type=int, default=1,
+        help="Number of samples to evaluate concurrently (set >1 to parallelize against vLLM).",
+    )
     args = parser.parse_args()
     asyncio.run(main(
         num_samples=args.num_samples,
@@ -148,4 +164,5 @@ if __name__ == "__main__":
         max_steps=args.max_steps,
         max_turns=args.max_turns,
         out_path=args.out_path,
+        concurrency=args.concurrency,
     ))
