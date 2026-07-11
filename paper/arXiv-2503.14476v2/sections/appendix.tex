@@ -1,0 +1,91 @@
+\section{Dataset Transformation}
+
+Here is an example of data transformation, where we demonstrate the original problem, the transformed problem, and the model outputs during the transformation process (the original is in markdown text, which has been rendered for readability). 
+
+To ensure the model can complete this task with high accuracy, our goal is to have it perform comprehensive reasoning while avoiding hallucinations. We achieve this by providing a clear thinking framework that encourages thorough reasoning. Specifically, we employ Chain of Thought (CoT) reasoning along with four well-defined steps: extract the answer format, rewrite the problem statement, solve the modified problem and provide an integer as the final answer. For each step, we provide few-shot solutions or detailed guidelines to guide the model's reasoning.
+
+Through this approach, we have observed that in most cases, the LLM can generate reformulations with both format and quality that are satisfactory.
+
+\tcbset{colback=seedblue!10!white, colframe=seedblue, width=\linewidth, arc=5mm}
+\begin{tcolorbox}
+\subsection*{Original Problem}
+\vspace{-5pt}
+Let $x$ and $y$ be real numbers such that $x^2 + y^2 - 22x - 16y + 113 = 0.$ Determine the smallest possible value of $x.$ \textbf{Answer: $11 - 2\sqrt{6}$}
+\vspace{20pt}
+
+\subsection*{Transformed Problem}
+\vspace{-5pt}
+Let $x$ and $y$ be real numbers such that $x^2 + y^2 - 22x - 16y + 113 = 0.$ Determine the smallest possible value of $x$. The original answer is in the form $k - m\sqrt{n}$, where $k$, $m$, and $n$ are integers. Please find the value of $k + m + n$. \textbf{Answer: $19$}
+
+\vspace{20pt}
+\subsection*{Model's output (Markdown Text)} 
+\vspace{-2pt}
+
+    \subsubsection*{Transformation Thought 
+    Process}
+    \vspace{-5pt}
+    The original answer to the problem is an algebraic expression \(11 - 2\sqrt{6}.\)
+    We need to transform this into an integer form. First, note that the answer consists of an integer part and a square root term. According to the given rule, we replace the integer and square root components with undetermined coefficients. The original problem uses \( x \) and \( y \) as variables, so we choose other letters as undetermined coefficients. We express the answer in the form 
+    \(k - m\sqrt{n}\)
+    and require the student to find \( k + m + n \).
+
+    \subsubsection*{Answer Format}
+    \vspace{-5pt}
+    \(k - m\sqrt{n}\)
+
+    \subsubsection*{Transformed Problem}
+    \vspace{-5pt}
+    Let \( x \) and \( y \) be real numbers such that 
+    \(
+    x^2 + y^2 - 22x - 16y + 113 = 0.
+    \)
+    Determine the smallest possible value of \( x \). The original answer is in the form \( k - m\sqrt{n} \), where \( k \), \( m \), and \( n \) are integers. Please find the value of \( k + m + n \).
+
+    \subsubsection*{Answer Calculation for the Transformed Problem}
+    \vspace{-5pt}
+    \begin{itemize}
+        \item The original answer is: \( 11 - 2\sqrt{6} \).
+        \item The required format is: \( k - m\sqrt{n} \).
+        \item Matching the coefficients: \( k = 11 \), \( m = 2 \), \( n = 6 \).
+        \item The final result is: $k + m + n = 11 + 2 + 6 = 19.$
+    \end{itemize}
+    \vspace{-10pt}
+    \subsubsection*{Final Answer}
+    \vspace{-5pt}
+    $19$
+
+\end{tcolorbox}
+
+\newpage
+
+\section{Supplementary Case}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{@{}p{0.9\textwidth}@{}} 
+        \toprule 
+        \textbf{Question:} \\
+        Among the 900 residents of Aimeville, there are 195 who own a diamond ring, 367 who own a set of golf clubs, and 562 who own a garden spade. In addition, each of the 900 residents owns a bag of candy hearts. There are 437 residents who own exactly two of these things, and 234 residents who own exactly three of these things. Find the number of residents of Aimeville who own all four of these things. \\
+        \midrule 
+        \textbf{Response}: \\
+        Step by Step Solution: \\
+        1. Let's define the following variables: \\
+        Let $A$ be the set of residents who own a diamond ring. \\
+        Let $B$ be the set of residents who own a set of golf clubs. \\
+        Let $C$ be the set of residents who own a garden spade. \\
+        Let $D$ be the set of residents who own a bag of candy hearts. Since all 900 residents own a bag of candy hearts, $|D| = 900$. \\
+        Let $a_{i}$ denote the number of residents who own exactly $i$ out of the 4 items. \\
+        Let's use the principle of inclusion-exclusion for the union of 4 sets $A, B, C, D$. \\
+        ... \\
+        $a_4 = \frac{- 219}{- 4} = \frac{219}{4} = 54.75$. \\
+        \textcolor{red}{Since $a_4$, the number of people owning all four items, must be a whole number, our current approach needs to be reconsidered} in terms of the combinatorial counting of people owning different combinations of the items.
+
+        Instead of directly using the inclusion-exclusion principle, we can use a different approach involving the number of people owning combinations of the items $A$, $B$, $C$, and $D$. \\
+        Let $x_i$ be the number of people owning exactly $i$ item among $A$, $B$, $C$ (\textcolor{red}{excluding the item $D$ which everyone owns}). \\
+        Then the total number of people owning exactly $k$ items among the $A$, $B$, $C$, and $D$ can be broken down: \\
+        ... \\
+        \bottomrule 
+    \end{tabular}
+    \caption{A case of reflective behavior emergence.}
+    \label{tab:case_study2}
+\end{table}

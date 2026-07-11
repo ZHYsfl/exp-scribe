@@ -1,0 +1,181 @@
+\begin{thebibliography}{10}
+
+\bibitem{o1}
+OpenAI.
+\newblock Learning to reason with llms, 2024.
+
+\bibitem{guo2025deepseek}
+Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song, Ruoyu Zhang, Runxin Xu, Qihao Zhu, Shirong Ma, Peiyi Wang, Xiao Bi, et~al.
+\newblock Deepseek-r1: Incentivizing reasoning capability in llms via reinforcement learning.
+\newblock {\em arXiv preprint arXiv:2501.12948}, 2025.
+
+\bibitem{gpt4}
+OpenAI.
+\newblock {GPT4} technical report.
+\newblock {\em arXiv preprint arXiv:2303.08774}, 2023.
+
+\bibitem{claude35sonnet}
+Anthropic.
+\newblock Claude 3.5 sonnet, 2024.
+
+\bibitem{gpt3}
+Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared~D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et~al.
+\newblock Language models are few-shot learners.
+\newblock {\em Advances in neural information processing systems}, 33:1877--1901, 2020.
+
+\bibitem{chowdhery2023palm}
+Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten Bosma, Gaurav Mishra, Adam Roberts, Paul Barham, Hyung~Won Chung, Charles Sutton, Sebastian Gehrmann, et~al.
+\newblock Palm: Scaling language modeling with pathways.
+\newblock {\em Journal of Machine Learning Research}, 24(240):1--113, 2023.
+
+\bibitem{dsv3}
+Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao Wu, Chengda Lu, Chenggang Zhao, Chengqi Deng, Chenyu Zhang, Chong Ruan, et~al.
+\newblock Deepseek-v3 technical report.
+\newblock {\em arXiv preprint arXiv:2412.19437}, 2024.
+
+\bibitem{grok}
+XAI.
+\newblock Grok 3 beta — the age of reasoning agents, 2024.
+
+\bibitem{gemini-thinking}
+Google DeepMind.
+\newblock Gemini 2.0 flash thinking, 2024.
+
+\bibitem{qwq}
+Qwen.
+\newblock Qwq-32b: Embracing the power of reinforcement learning, 2024.
+
+\bibitem{k1.5}
+Kimi Team, Angang Du, Bofei Gao, Bowei Xing, Changjiu Jiang, Cheng Chen, Cheng Li, Chenjun Xiao, Chenzhuang Du, Chonghua Liao, et~al.
+\newblock Kimi k1. 5: Scaling reinforcement learning with llms.
+\newblock {\em arXiv preprint arXiv:2501.12599}, 2025.
+
+\bibitem{yang2024qwen2}
+An~Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo~Zheng, Bowen Yu, Chengyuan Li, Dayiheng Liu, Fei Huang, Haoran Wei, et~al.
+\newblock Qwen2. 5 technical report.
+\newblock {\em arXiv preprint arXiv:2412.15115}, 2024.
+
+\bibitem{rendarl}
+Zhipeng Chen, Yingqian Min, Beichen Zhang, Jie Chen, Jinhao Jiang, Daixuan Cheng, Wayne~Xin Zhao, Zheng Liu, Xu~Miao, Yang Lu, et~al.
+\newblock An empirical study on eliciting and improving r1-like reasoning models.
+\newblock {\em arXiv preprint arXiv:2503.04548}, 2025.
+
+\bibitem{OpenReasonerZero2025}
+Jingcheng Hu, Yinmin Zhang, Qi~Han, Daxin Jiang, and Heung-Yeung~Shum Xiangyu~Zhang.
+\newblock Open-reasoner-zero: An open source approach to scaling reinforcement learning on the base model.
+\newblock \url{https://github.com/Open-Reasoner-Zero/Open-Reasoner-Zero}, 2025.
+
+\bibitem{hu2025reinforce++}
+Jian Hu.
+\newblock Reinforce++: A simple and efficient approach for aligning large language models.
+\newblock {\em arXiv preprint arXiv:2501.03262}, 2025.
+
+\bibitem{cui2025process}
+Ganqu Cui, Lifan Yuan, Zefan Wang, Hanbin Wang, Wendi Li, Bingxiang He, Yuchen Fan, Tianyu Yu, Qixin Xu, Weize Chen, et~al.
+\newblock Process reinforcement through implicit rewards.
+\newblock {\em arXiv preprint arXiv:2502.01456}, 2025.
+
+\bibitem{lee2024token}
+Jung~Hyun Lee, June~Yong Yang, Byeongho Heo, Dongyoon Han, and Kang~Min Yoo.
+\newblock Token-supervised value models for enhancing mathematical reasoning capabilities of large language models.
+\newblock {\em arXiv preprint arXiv:2407.12863}, 2024.
+
+\bibitem{kazemnejad2024vineppo}
+Amirhossein Kazemnejad, Milad Aghajohari, Eva Portelance, Alessandro Sordoni, Siva Reddy, Aaron Courville, and Nicolas~Le Roux.
+\newblock Vineppo: Unlocking rl potential for llm reasoning through refined credit assignment.
+\newblock {\em arXiv preprint arXiv:2410.01679}, 2024.
+
+\bibitem{yuan2025s}
+Yufeng Yuan, Yu~Yue, Ruofei Zhu, Tiantian Fan, and Lin Yan.
+\newblock What's behind ppo's collapse in long-cot? value optimization holds the secret.
+\newblock {\em arXiv preprint arXiv:2503.01491}, 2025.
+
+\bibitem{sheng2024hybridflow}
+Guangming Sheng, Chi Zhang, Zilingfeng Ye, Xibin Wu, Wang Zhang, Ru~Zhang, Yanghua Peng, Haibin Lin, and Chuan Wu.
+\newblock Hybridflow: A flexible and efficient rlhf framework.
+\newblock {\em arXiv preprint arXiv:2409.19256}, 2024.
+
+\bibitem{schulman2017proximal}
+John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov.
+\newblock Proximal policy optimization algorithms.
+\newblock {\em arXiv preprint arXiv:1707.06347}, 2017.
+
+\bibitem{schulman2018highdimensionalcontinuouscontrolusing}
+John Schulman, Philipp Moritz, Sergey Levine, Michael Jordan, and Pieter Abbeel.
+\newblock High-dimensional continuous control using generalized advantage estimation, 2018.
+
+\bibitem{NEURIPS2022_b1efde53}
+Long Ouyang, Jeffrey Wu, Xu~Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, John Schulman, Jacob Hilton, Fraser Kelton, Luke Miller, Maddie Simens, Amanda Askell, Peter Welinder, Paul~F Christiano, Jan Leike, and Ryan Lowe.
+\newblock Training language models to follow instructions with human feedback.
+\newblock In S.~Koyejo, S.~Mohamed, A.~Agarwal, D.~Belgrave, K.~Cho, and A.~Oh, editors, {\em Advances in Neural Information Processing Systems}, volume~35, pages 27730--27744. Curran Associates, Inc., 2022.
+
+\bibitem{amodei2016concreteproblemsaisafety}
+Dario Amodei, Chris Olah, Jacob Steinhardt, Paul Christiano, John Schulman, and Dan Mané.
+\newblock Concrete problems in ai safety, 2016.
+
+\bibitem{everitt2017reinforcementlearningcorruptedreward}
+Tom Everitt, Victoria Krakovna, Laurent Orseau, Marcus Hutter, and Shane Legg.
+\newblock Reinforcement learning with a corrupted reward channel, 2017.
+
+\bibitem{google2020specialgaming}
+Victoria Krakovna, Jonathan Uesato, Vladimir Mikulik, Matthew Rahtz, Tom Everitt, Ramana Kumar, Zac Kenton, Jan Leike, and Shane Legg.
+\newblock Specification gaming: the flip side of ai ingenuity, 2020.
+
+\bibitem{everitt2021rewardtamperingproblemssolutions}
+Tom Everitt, Marcus Hutter, Ramana Kumar, and Victoria Krakovna.
+\newblock Reward tampering problems and solutions in reinforcement learning: A causal influence diagram perspective, 2021.
+
+\bibitem{gao2022scalinglawsrewardmodel}
+Leo Gao, John Schulman, and Jacob Hilton.
+\newblock Scaling laws for reward model overoptimization, 2022.
+
+\bibitem{weng2024rewardhack}
+Lilian Weng.
+\newblock Reward hacking in reinforcement learning.
+\newblock {\em lilianweng.github.io}, Nov 2024.
+
+\bibitem{polu2020generativelanguagemodelingautomated}
+Stanislas Polu and Ilya Sutskever.
+\newblock Generative language modeling for automated theorem proving, 2020.
+
+\bibitem{trinh2024solving}
+Trieu~H Trinh, Yuhuai Wu, Quoc~V Le, He~He, and Thang Luong.
+\newblock Solving olympiad geometry without human demonstrations.
+\newblock {\em Nature}, 625(7995):476--482, 2024.
+
+\bibitem{google2024alphageometry}
+Trieu Trinh and Thang Luong.
+\newblock Alphageometry: An olympiad-level ai system for geometry, 2024.
+
+\bibitem{google2024alphaproofandalphageometry}
+AlphaProof and AlphaGeometry Teams.
+\newblock Ai achieves silver-medal standard solving international mathematical olympiad problems, 2024.
+
+\bibitem{le2022coderl}
+Hung Le, Yue Wang, Akhilesh~Deepak Gotmare, Silvio Savarese, and Steven Chu~Hong Hoi.
+\newblock Coderl: Mastering code generation through pretrained models and deep reinforcement learning.
+\newblock {\em Advances in Neural Information Processing Systems}, 35:21314--21328, 2022.
+
+\bibitem{shinn2023reflexionlanguageagentsverbal}
+Noah Shinn, Federico Cassano, Edward Berman, Ashwin Gopinath, Karthik Narasimhan, and Shunyu Yao.
+\newblock Reflexion: Language agents with verbal reinforcement learning, 2023.
+
+\bibitem{chen2023teachinglargelanguagemodels}
+Xinyun Chen, Maxwell Lin, Nathanael Schärli, and Denny Zhou.
+\newblock Teaching large language models to self-debug, 2023.
+
+\bibitem{gehring2025rlefgroundingcodellms}
+Jonas Gehring, Kunhao Zheng, Jade Copet, Vegard Mella, Quentin Carbonneaux, Taco Cohen, and Gabriel Synnaeve.
+\newblock Rlef: Grounding code llms in execution feedback with reinforcement learning, 2025.
+
+\bibitem{deepseekmath}
+Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Mingchuan Zhang, YK~Li, Y~Wu, and Daya Guo.
+\newblock Deepseekmath: Pushing the limits of mathematical reasoning in open language models.
+\newblock {\em arXiv preprint arXiv:2402.03300}, 2024.
+
+\bibitem{loshchilov2018decoupled}
+Ilya Loshchilov and Frank Hutter.
+\newblock Decoupled weight decay regularization.
+\newblock In {\em International Conference on Learning Representations}, 2019.
+
+\end{thebibliography}

@@ -1,0 +1,92 @@
+\documentclass[]{bytedance_seed}
+
+% single-column: \documentclass[]{bytedance_seed}, 
+%Please prioritize using single-column。
+
+% twocolumn: \documentclass[twocolumn]{bytedance_seed}
+
+\usepackage[toc,page,header]{appendix}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\usepackage{minitoc}
+\usepackage{cleveref} 
+\usepackage{subcaption}
+\usepackage{booktabs}
+
+\input{macro}
+
+
+%%%%%%%%%%%%%%%%%%%%
+
+\title{DAPO: An Open-Source LLM Reinforcement Learning System at Scale}
+% Democratizing LLM Reasoning \\ by Unveiling the Secrets of RL Scaling}
+% Open-Source LLM RL System Surpassing DeepSeek's RL}
+% Democratizing LLM Reasoning \\ by Unveiling the Secrets of RL Scaling}
+
+% 
+
+% \author[1,2,*, \dagger]{Author1}
+% \author[1]{Author2}
+% \author[1,2,*]{Author3}
+% \author[1]{Author4}
+% \author[1, \dagger]{Author5}
+
+%论文单位请使用ByteDance Seed
+
+\affiliation[1]{ByteDance Seed\quad $^2$Institute for AI Industry Research (AIR), Tsinghua University}
+% \affiliation[2]{}
+\affiliation[3]{The University of Hong Kong}
+\affiliation[4]{SIA-Lab of Tsinghua AIR and ByteDance Seed}
+
+
+
+\contribution{Full author list in Contributions}
+% \contribution[*]{Work done at ByteDance Seed}
+% \contribution[\dagger]{Corresponding authors}
+
+\abstract{
+\input{sections/000abstract}
+}
+
+% March 17, 2025
+% \today
+
+\date{March 17, 2025}
+\correspondence{\email{zhouhao@air.tsinghua.edu.cn}, \email{wangmingxuan.89@bytedance.com}}
+% \correspondence{Qiying Yu at \email{yuqy22@mails.tsinghua.edu.cn}}
+
+% You can add additional info fields as follows 
+\checkdata[Project Page]{\url{https://dapo-sia.github.io/}}
+
+\begin{document}
+
+\maketitle
+
+%不需要目录就注释掉 注意目录不要和第一页放在一块 要有\newpage
+%\newpage
+%\tableofcontents
+%\newpage
+
+\input{sections/010intro}
+\input{sections/020preliminary}
+\input{sections/030method}
+\input{sections/040experiments}
+% \input{sections/050discussion}
+% \input{sections/060related}
+\input{sections/100conclusion}
+
+\clearpage
+
+\bibliographystyle{unsrt}
+% \bibliographystyle{plainnat}
+\bibliography{main}
+
+\clearpage
+
+\beginappendix
+
+\input{sections/appendix}
+
+\end{document}

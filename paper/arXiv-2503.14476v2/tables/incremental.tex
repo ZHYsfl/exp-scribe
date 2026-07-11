@@ -1,0 +1,22 @@
+
+\setcounter{table}{0}
+\begin{table}[t]
+    \centering
+    \caption{Main results of progressive techniques applied to \textbf{DAPO}}
+    \begin{tabular}{l c}
+        \toprule
+        \textbf{Model} & $\textbf{AIME24}_\text{avg@32}$ \\
+        \midrule
+        \textbf{DeepSeek-R1-Zero-Qwen-32B}  & 47 \\
+        % \textbf{VC-PPO} & 49 \\
+        \midrule
+        Naive GRPO & 30 \\
+        + Overlong Filtering & 36 \\
+        + Clip-Higher & 38 \\
+        + Soft Overlong Punishment & 41 \\
+        + Token-level Loss & 42 \\
+        + Dynamic Sampling (\method) & \textbf{50} \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:results}
+\end{table}
