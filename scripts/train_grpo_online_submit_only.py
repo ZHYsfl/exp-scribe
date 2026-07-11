@@ -150,7 +150,23 @@ def parse_args() -> argparse.Namespace:
         "--clip_epsilon",
         type=float,
         default=0.2,
-        help="GSPO step-level clipping epsilon",
+        help="GSPO step-level LOWER clipping epsilon (Clip-Higher: keep tight to "
+             "push bad tokens toward 0).",
+    )
+    parser.add_argument(
+        "--clip_epsilon_high",
+        type=float,
+        default=0.4,
+        help="GSPO step-level UPPER clipping epsilon (Clip-Higher: decoupled & "
+             "larger than low so low-prob exploration tokens can rise).",
+    )
+    parser.add_argument(
+        "--llds_lambda",
+        type=float,
+        default=0.0,
+        help="LLDS likelihood-preserving regularizer weight (0=off). Penalizes "
+             "likelihood decreases on non-negative-advantage steps; reuses "
+             "old_logprobs (no extra forward). Try 0.5-1.0.",
     )
     parser.add_argument(
         "--max_grad_norm",
@@ -486,6 +502,7 @@ async def run_one_turn(
                 observations = []
             await agent.chat(observations)
             passed = False
+            truncated = False
             if agent.trajectory:
                 last = agent.trajectory[-1]
                 result = runner._evaluate_turn(last)
@@ -499,6 +516,9 @@ async def run_one_turn(
                         and right_answer is not None
                         and str(answer).strip() == str(right_answer).strip()
                     )
+                    # Turn hit max_steps (looping) - Overlong Filtering flags it.
+                    if isinstance(last, dict):
+                        truncated = bool(last.get("truncated", False))
                 else:
                     # Degenerate: turn not flagged done by SCRIBE criteria
                     # (e.g. ended on submit with no R+S). Finalize anyway so
@@ -516,7 +536,12 @@ async def run_one_turn(
         finally:
             await agent.aclose()
         env.close()
-        return {"record": record, "state": new_state, "passed": passed}
+        return {
+            "record": record,
+            "state": new_state,
+            "passed": passed,
+            "truncated": truncated,
+        }
 
 
 async def collect_tree_rollouts(
@@ -687,7 +712,9 @@ def do_scribe_update(
             old_logprobs,
             token_credits,
             rollout_mask,
-            epsilon=args.clip_epsilon,
+            epsilon_low=args.clip_epsilon,
+            epsilon_high=args.clip_epsilon_high,
+            llds_lambda=args.llds_lambda,
         )
 
         loss = loss / args.gradient_accumulation_steps
@@ -856,6 +883,7 @@ def main():
                 continue
             groups[nd["group_id"]].append(nd)
         n_pass = 0
+        n_filtered = 0
         for grp in groups.values():
             rewards = [nd["record"].reward for nd in grp]
             all_rewards.extend(rewards)
@@ -863,6 +891,13 @@ def main():
             for nd, adv in zip(grp, advantages):
                 if nd["passed"]:
                     n_pass += 1
+                if nd.get("truncated", False):
+                    # Overlong Filtering (DAPO): a truncated turn (hit max_steps,
+                    # likely looping) is low-quality - mask its loss by skipping
+                    # its samples. Its turn_reward still shapes siblings'
+                    # advantages (so it still counts in the group baseline).
+                    n_filtered += 1
+                    continue
                 samples = build_tree_node_samples(
                     nd["record"], adv, tokenizer, max_seq_length=args.max_seq_length
                 )
@@ -878,6 +913,7 @@ def main():
             "n_nodes": len(node_records),
             "n_groups": len(groups),
             "n_pass": n_pass,
+            "n_filtered": n_filtered,
             "max_depth": max((nd["depth"] for nd in nodes), default=0),
         }
 

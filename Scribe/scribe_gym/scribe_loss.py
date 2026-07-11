@@ -42,9 +42,12 @@ def compute_scribe_loss(
     old_logprobs: torch.Tensor,
     token_credits: torch.Tensor,
     rollout_mask: torch.Tensor,
-    epsilon: float = 0.2,
+    epsilon_low: float = 0.2,
+    epsilon_high: float = 0.4,
+    llds_lambda: float = 0.0,
 ) -> Tuple[torch.Tensor, Dict[str, float]]:
-    """Compute the GSPO-token / DAPO loss with step-level importance ratio.
+    """Compute the GSPO-token / DAPO loss with step-level importance ratio,
+    plus optional LLDS likelihood-preserving regularizer.
 
     Args:
         policy_logprobs: [batch, seq_len] per-token log-probs under the policy.
@@ -53,7 +56,16 @@ def compute_scribe_loss(
             frozen SFT reference.
         token_credits: [batch, seq_len] pre-computed advantage per token.
         rollout_mask: [batch, seq_len] 1 for rollout tokens, 0 otherwise.
-        epsilon: clipping parameter for the step-level ratio.
+        epsilon_low: lower clip for the step-level ratio (Clip-Higher: keep low
+            to suppress bad tokens toward 0).
+        epsilon_high: UPPER clip (Clip-Higher: decoupled & larger than low to
+            leave room for low-prob 'exploration' tokens to rise, preventing
+            entropy collapse).
+        llds_lambda: LLDS regularizer weight. 0 disables. LLDS penalizes
+            likelihood DECREASES on non-negative-advantage (correct/untrained)
+            steps, reusing old_logprobs (no extra forward). Action-level gating
+            (only when the step's total likelihood dropped) + token-level
+            selectivity (only the decreasing tokens).
 
     Returns:
         loss: scalar tensor.
@@ -74,7 +86,10 @@ def compute_scribe_loss(
     s_step = torch.exp(step_log_ratio)  # [batch], one ratio per step
 
     ratio = s_step.unsqueeze(1)  # broadcast to all tokens in the step
-    clipped_ratio = torch.clamp(ratio, 1.0 - epsilon, 1.0 + epsilon)
+    # Clip-Higher (DAPO): decouple low/high. Keep eps_low tight (pushing bad
+    # tokens to 0 is fine), raise eps_high so low-prob exploration tokens can
+    # actually increase (a 0.01-prob token capped at 1.2*eps_low barely moves).
+    clipped_ratio = torch.clamp(ratio, 1.0 - epsilon_low, 1.0 + epsilon_high)
 
     surrogate1 = ratio * token_credits
     surrogate2 = clipped_ratio * token_credits
@@ -84,9 +99,10 @@ def compute_scribe_loss(
     loss = policy_loss
 
     with torch.no_grad():
-        # A step is clipped when its s_step leaves [1-eps, 1+eps]; weight by the
-        # step's token count so clip_frac is a fraction of rollout tokens.
-        step_clipped = ((s_step - 1.0).abs() > epsilon).float()  # [batch]
+        # A step is clipped when its s_step leaves [1-eps_low, 1+eps_high].
+        step_clipped = (
+            ((s_step - 1.0) < -epsilon_low) | ((s_step - 1.0) > epsilon_high)
+        ).float()  # [batch]
         clip_frac = (step_clipped * n_tok).sum() / n_tok.sum().clamp_min(1.0)
         metrics = {
             "scribe/loss": loss.item(),
