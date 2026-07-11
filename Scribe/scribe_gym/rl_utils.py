@@ -24,7 +24,7 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from .parsers import render_scribe_blocks
+from .parsers import ScribeBlockType, render_scribe_blocks
 from .step_expander import expand_turn
 from .turn_record import Step, TurnRecord
 
@@ -190,6 +190,112 @@ def _left_truncate_sample(
     }
 
 
+_SUBMIT_STEP_WEIGHT = 0.35
+_SUMMARY_STEP_WEIGHT = 0.35
+_ORDINARY_STEP_POOL = 0.30
+
+
+def _has_reflect_then_summary(blocks) -> bool:
+    """True if a REFLECT block is immediately followed by a TURN_SUMMARY block.
+
+    The SCRIBE final non-tool step must end with R then S (README metric 4b:
+    reflect is second-to-last, turn_summary is last). "Summary step" credit
+    requires BOTH blocks present AND consecutive - a step with only R, only S,
+    or non-adjacent R/S is not a valid summary step (its 0.35 is dropped, see
+    _step_weights).
+    """
+    for j in range(len(blocks) - 1):
+        if (
+            blocks[j].type == ScribeBlockType.REFLECT
+            and blocks[j + 1].type == ScribeBlockType.TURN_SUMMARY
+        ):
+            return True
+    return False
+
+
+def _step_weights(steps: List[Step]) -> List[float]:
+    """Per-step credit weights for one turn (one tree node).
+
+    Mapping (README "key steps"): the turn's signal concentrates on the
+    submit step (carries metric 1, the w1=0.60 dominant term) and the summary
+    step (carries metrics 6-13). Other tool-call steps carry only the light
+    anti-hacking metrics 14-15 and are shared infrastructure across sibling
+    branches, so they get a small shared pool.
+
+      - submit step   = last step whose output has a submit tool call  -> 0.35
+      - summary step  = last non-tool step with R/S                    -> 0.35
+      - ordinary steps (the rest) share 0.30 (each 0.30 / k)
+
+    A MISSING special step's 0.35 is DROPPED, never redistributed. A degenerate
+    turn with no submit/summary gets only the 0.30 ordinary pool, so its
+    (usually negative) advantage spreads thinly across reasoning tokens. This
+    avoids hammering reasoning tokens for what is typically a format failure
+    (format is SFT's job; metric 4 already flags it in turn_reward) rather than
+    a reasoning failure - the same spirit as LLD's "don't penalize correct
+    actions for the wrong reason". Total weight is in (0, 1.0].
+    """
+    n = len(steps)
+    submit_idx = None
+    summary_idx = None
+    for i, s in enumerate(steps):
+        is_tool = any(b.type == ScribeBlockType.TOOL_CALL for b in s.output)
+        if is_tool:
+            for b in s.output:
+                if b.type != ScribeBlockType.TOOL_CALL:
+                    continue
+                p = getattr(b, "parsed", None)
+                if isinstance(p, dict) and p.get("name") == "submit":
+                    submit_idx = i  # last submit step (it sets the final answer)
+                    break
+        else:
+            # Non-tool step: it is the summary step only if it carries a proper
+            # R-then-S tail (both present AND consecutive). R alone / S alone /
+            # non-adjacent R+S does NOT count -> that 0.35 is dropped.
+            if _has_reflect_then_summary(s.output):
+                summary_idx = i  # last non-tool step with R immediately then S
+    weights = [0.0] * n
+    ordinary = [i for i in range(n) if i != submit_idx and i != summary_idx]
+    if submit_idx is not None:
+        weights[submit_idx] = _SUBMIT_STEP_WEIGHT
+    if summary_idx is not None:
+        weights[summary_idx] = _SUMMARY_STEP_WEIGHT
+    if ordinary:
+        ow = _ORDINARY_STEP_POOL / len(ordinary)
+        for i in ordinary:
+            weights[i] = ow
+    return weights
+
+
+def build_tree_node_samples(
+    turn: TurnRecord,
+    advantage: float,
+    tokenizer,
+    max_seq_length: int = 4096,
+) -> List[Dict[str, Any]]:
+    """Expand ONE tree node (a single turn) into step-level GRPO samples with
+    step-role-weighted credit.
+
+    Replaces the trajectory-level equal-split ``build_training_samples`` for the
+    n-ary tree rollout. ``advantage`` is the node's SIBLING-group advantage
+    (turn_reward vs the n siblings sampled from the same parent state) - it is
+    NOT divided by num_turns: there is no trajectory, each node is an
+    independent short-horizon GRPO problem. Within the node, the advantage is
+    split across steps by role (submit/summary/ordinary) and each step's credit
+    is then split uniformly across its rollout tokens by ``_build_step_training_sample``.
+    """
+    steps = expand_turn(turn)
+    if not steps:
+        return []
+    weights = _step_weights(steps)
+    samples: List[Dict[str, Any]] = []
+    for step, w in zip(steps, weights):
+        step_credit = advantage * w
+        sample = _build_step_training_sample(step, step_credit, tokenizer)
+        if sample:
+            samples.append(_left_truncate_sample(sample, max_seq_length))
+    return samples
+
+
 def build_training_samples(
     turns: List[TurnRecord],
     trajectory_advantage: float,
@@ -230,4 +336,5 @@ __all__ = [
     "compute_trajectory_reward",
     "compute_group_advantages",
     "build_training_samples",
+    "build_tree_node_samples",
 ]

@@ -34,7 +34,7 @@ import random
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
@@ -57,7 +57,7 @@ from Scribe.scribe_gym import (
 )
 from Scribe.scribe_gym.grpo_loss import compute_grpo_loss, gather_logprobs
 from Scribe.scribe_gym.rl_utils import (
-    build_training_samples,
+    build_tree_node_samples,
     compute_group_advantages,
     compute_trajectory_reward,
 )
@@ -196,6 +196,22 @@ def parse_args() -> argparse.Namespace:
         help="Dynamic Sampling: a group with sample-std below this is treated "
              "as low-signal and triggers resampling. w1=0.60 dominates the "
              "reward, so a mixed group's std is well above this.",
+    )
+    parser.add_argument(
+        "--branch_n",
+        type=int,
+        default=6,
+        help="Tree rollout branching factor = GRPO group size. Each non-passing "
+             "node branches this many children (siblings sharing the parent "
+             "state -> one valid GRPO group).",
+    )
+    parser.add_argument(
+        "--branch_dropout",
+        type=float,
+        default=0.5,
+        help="Tree rollout: probability a NON-passing node branches its n "
+             "children. 1.0 = full tree; <1.0 stochastically prunes to bound "
+             "rollout cost. Passing nodes are always leaves.",
     )
     parser.add_argument(
         "--max_steps_per_turn",
@@ -353,34 +369,37 @@ def build_lr_lambda(num_iterations: int, warmup_ratio: float, lr_min_ratio: floa
 
 
 def aggregate_metric_vectors(
-    trajectories: List[List[TurnRecord]],
+    turns: List[TurnRecord],
 ) -> Dict[str, Any]:
-    """Mean of each of the 16 turn metrics across all turns this iteration.
+    """Mean of each of the 16 turn metrics across all turns (tree nodes) this
+    iteration.
 
     Each TurnRecord carries a reward_breakdown (TurnRewardBreakdown). Averaging
     metric_1..metric_16 over all turns makes per-metric behavior visible
     alongside the scalar mean reward - e.g. metric_16 rising = less cross-turn
     resubmitting, metric_4 rising = cleaner format. metric_1 > 0 is a proxy for
     "answer correct" (correctness is a binary gate inside metric_1).
+
+    Takes a flat list of TurnRecords: in the tree rollout there is no
+    trajectory, each node IS one turn.
     """
     n_metrics = 16
     sums = [0.0] * n_metrics
     n_turns = 0
     n_answer_correct = 0
     n_judge_used = 0
-    for turns in trajectories:
-        for t in turns:
-            bd = t.reward_breakdown
-            if bd is None:
-                continue
-            n_turns += 1
-            vals = bd.metrics
-            for i in range(min(n_metrics, len(vals))):
-                sums[i] += vals[i]
-            if bd.metric_1 > 0.0:
-                n_answer_correct += 1
-            if getattr(bd, "judge_used", False):
-                n_judge_used += 1
+    for t in turns:
+        bd = t.reward_breakdown
+        if bd is None:
+            continue
+        n_turns += 1
+        vals = bd.metrics
+        for i in range(min(n_metrics, len(vals))):
+            sums[i] += vals[i]
+        if bd.metric_1 > 0.0:
+            n_answer_correct += 1
+        if getattr(bd, "judge_used", False):
+            n_judge_used += 1
     means = [s / n_turns for s in sums] if n_turns else [0.0] * n_metrics
     return {
         "metric_means": {f"m{i + 1}": means[i] for i in range(n_metrics)},
@@ -507,6 +526,189 @@ async def collect_group_rollouts(
         for item in items
     ]
     return await asyncio.gather(*tasks)
+
+
+async def run_one_turn(
+    backend: VLLMBackend,
+    item: Dict[str, Any],
+    tokenizer: Any,
+    args: argparse.Namespace,
+    state: Optional[Dict[str, Any]],
+    semaphore: asyncio.Semaphore,
+) -> Dict[str, Any]:
+    """Run ONE SCRIBE turn from ``state`` (None = root / turn-0).
+
+    Tree-rollout primitive. Each node is a single turn attempt; siblings
+    (children of the same parent) are produced by calling this with the SAME
+    parent ``state``, so they share identical input -> a valid GRPO group.
+
+    State restored for a child: the parent's history_manager turns (with their
+    feedback, so build_input reconstructs the cross-turn prefix) + the
+    system/kickoff prefix + the agent's env trajectory (kept so metric 14's
+    cumulative malformed-call count stays consistent with a linear trajectory).
+    The env itself is fresh per node: for submit-only GSM8K the env carries no
+    cross-turn state except right_answer (fixed from the item), so a fresh env
+    is correct; the cross-turn memory lives in the history_manager.
+    """
+    async with semaphore:
+        workspace = Path(args.output_dir) / "rollout_ws" / item["task_id"]
+        env = make_gsm8k_submit_only_env(
+            item, workspace_root=workspace, max_steps=args.max_steps_per_turn,
+        )
+        counter = DeepSeekTokenCounter()
+        hm = HistoryManager(counter, k=2, hard_limit=None)
+        cfg = LLMConfig(api_key="", model=args.vllm_lora_name, base_url=args.vllm_base_url)
+        agent = GymBackedAgent(
+            config=cfg,
+            env=env,
+            history_manager=hm,
+            llm_backend=backend,
+            reward_config=DEFAULT_TURN_REWARD_CONFIG,
+            token_counter=counter,
+            max_tokens=args.max_tokens,
+            enable_judge=args.enable_judge,
+        )
+        runner = ScribeRunner(
+            agent=agent,
+            system_prompt=SYSTEM_PROMPT,
+            done_mode="threshold",
+            reward_threshold=args.reward_threshold,
+            max_turns=1,
+            tokenizer=tokenizer,
+        )
+        try:
+            if state is None:
+                # Root: reset sets the prefix + initial observations.
+                observations = await runner.reset()
+            else:
+                # Child: restore the parent's cross-turn state, then run one
+                # turn (input is rebuilt from the history_manager, NOT the env
+                # reset obs). env.reset() initializes the fresh env internals
+                # (step count, submit flags) for the new turn; its obs is unused.
+                hm._turns = [copy.deepcopy(t) for t in state["turns"]]
+                hm._system_msg = (
+                    dict(state["system_msg"]) if state["system_msg"] else None
+                )
+                hm._kickoff_msg = (
+                    dict(state["kickoff_msg"]) if state["kickoff_msg"] else None
+                )
+                agent.trajectory = [copy.deepcopy(e) for e in state["env_trajectory"]]
+                env.reset()
+                observations = []
+            await agent.chat(observations)
+            passed = False
+            if agent.trajectory:
+                last = agent.trajectory[-1]
+                result = runner._evaluate_turn(last)
+                if result is not None:
+                    await runner._finalize_current_turn(result)
+                    info = (last.get("info") or {}) if isinstance(last, dict) else {}
+                    answer = info.get("answer")
+                    right_answer = info.get("right_answer")
+                    passed = bool(
+                        answer is not None
+                        and right_answer is not None
+                        and str(answer).strip() == str(right_answer).strip()
+                    )
+                else:
+                    # Degenerate: turn not flagged done by SCRIBE criteria
+                    # (e.g. ended on submit with no R+S). Finalize anyway so
+                    # the attempt still yields a record with its real reward.
+                    await runner._finalize_current_turn(None)
+            else:
+                await runner._finalize_current_turn(None)
+            record = hm._turns[-1] if hm._turns else None
+            new_state = {
+                "turns": list(hm._turns),
+                "system_msg": dict(hm._system_msg) if hm._system_msg else None,
+                "kickoff_msg": dict(hm._kickoff_msg) if hm._kickoff_msg else None,
+                "env_trajectory": list(agent.trajectory),
+            }
+        finally:
+            await agent.aclose()
+        env.close()
+        return {"record": record, "state": new_state, "passed": passed}
+
+
+async def collect_tree_rollouts(
+    backend: VLLMBackend,
+    items: List[Dict[str, Any]],
+    tokenizer: Any,
+    args: argparse.Namespace,
+    max_concurrent: int = 8,
+) -> List[Dict[str, Any]]:
+    """N-ary tree rollout per task (replaces flat collect_group_rollouts).
+
+    For each task: sample n turn-0 attempts (siblings from the root -> one GRPO
+    group). A passing node (correct answer) is a leaf. A non-passing node
+    branches n children with probability ``dropout`` (else becomes a failure
+    leaf); its n children share the parent's state -> a valid GRPO group. Depth
+    is capped by max_turns. Cost is self-limiting: as the model improves, more
+    nodes pass early and the tree shrinks.
+
+    Returns a flat list of nodes; each carries turn_record, depth (1 = turn-0),
+    group_id (siblings share group_id), passed, task_id.
+    """
+    n = args.branch_n
+    p = args.branch_dropout
+    max_depth = args.max_turns  # turn-0..turn-(max_turns-1) => depth 1..max_turns
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    nodes: List[Dict[str, Any]] = []
+    group_id = 0
+    for item in items:
+        task_id = item["task_id"]
+        # Level 1 (turn-0): n attempts from the root, one group.
+        gid = group_id
+        group_id += 1
+        level1 = await asyncio.gather(
+            *[
+                run_one_turn(backend, item, tokenizer, args, None, semaphore)
+                for _ in range(n)
+            ]
+        )
+        frontier: List[Dict[str, Any]] = []
+        for nd in level1:
+            nd["depth"] = 1
+            nd["group_id"] = gid
+            nd["task_id"] = task_id
+            nodes.append(nd)
+            if not nd["passed"]:
+                frontier.append(nd)
+
+        depth = 1
+        while frontier and depth < max_depth:
+            depth += 1
+            # Each non-passing parent branches with prob p; its n children
+            # form one group. Gather ALL children across parents concurrently.
+            branching: List[tuple] = []  # (parent_state, group_id)
+            for parent in frontier:
+                if random.random() < p:
+                    branching.append((parent["state"], group_id))
+                    group_id += 1
+            if not branching:
+                break
+            child_tasks: List = []
+            child_gids: List[int] = []
+            for parent_state, cgid in branching:
+                for _ in range(n):
+                    child_tasks.append(
+                        run_one_turn(
+                            backend, item, tokenizer, args, parent_state, semaphore
+                        )
+                    )
+                    child_gids.append(cgid)
+            children = await asyncio.gather(*child_tasks)
+            next_frontier: List[Dict[str, Any]] = []
+            for nd, cgid in zip(children, child_gids):
+                nd["depth"] = depth
+                nd["group_id"] = cgid
+                nd["task_id"] = task_id
+                nodes.append(nd)
+                if not nd["passed"]:
+                    next_frontier.append(nd)
+            frontier = next_frontier
+    return nodes
 
 
 def collate_fn(batch: List[Dict[str, Any]], pad_token_id: int) -> Dict[str, torch.Tensor]:
@@ -722,76 +924,56 @@ def main():
             train_items, min(args.batch_size, len(train_items))
         )
 
-        # 2. Rollout group.
-        print("Collecting rollouts...")
-        trajectories = loop.run_until_complete(
-            collect_group_rollouts(
-                backend, items, args.group_size, tokenizer, args,
-                max_concurrent=args.max_concurrent,
+        # 2. N-ary tree rollout: siblings share the parent state, so each set
+        # of n siblings is a valid GRPO group (same input). A passing node
+        # (correct answer) is a leaf; a non-passing node branches n children
+        # with probability --branch_dropout; depth is capped by max_turns.
+        print("Collecting tree rollouts...")
+        nodes = loop.run_until_complete(
+            collect_tree_rollouts(
+                backend, items, tokenizer, args, max_concurrent=args.max_concurrent
             )
         )
 
-        # 3. Compute rewards and advantages per task group.
-        # Dynamic Sampling (DAPO): groups whose trajectory-reward std is too
-        # small are all-correct or all-wrong -> advantage ~0 -> zero/weak
-        # gradient. Resample such groups up to --dynamic_sampling_attempts
-        # times and keep the group with the largest std (strongest signal).
-        # w1=0.60 dominates the reward, so a mixed (some-correct / some-wrong)
-        # group has a much larger std than a uniform one.
-        groups: Dict[str, List[List[TurnRecord]]] = defaultdict(list)
-        for item, turns in zip(
-            [it for it in items for _ in range(args.group_size)], trajectories
-        ):
-            groups[item["task_id"]].append(turns)
-
-        ds_resamples = 0
+        # 3. Sibling-group advantage + step-role-weighted credit.
+        # Each group = n siblings (children of the same parent, same input).
+        # The node's 16-metric turn_reward is compared within its siblings ->
+        # per-node advantage. No trajectory-level advantage, no /turns: each
+        # node is an independent short-horizon GRPO problem. Within a node,
+        # credit splits across steps by role (submit 0.35 / summary 0.35 /
+        # ordinary share 0.30; a missing special step's weight is dropped).
         all_samples: List[Dict[str, Any]] = []
         all_rewards: List[float] = []
-        # Accumulate the actually-trained-on trajectories here. Must use the
-        # local `task_turns` (which may be rebound to a resampled group below),
-        # NOT `groups.values()` -- that dict still holds the original
-        # pre-resampling rollouts because `task_turns = new_turns` only rebinds
-        # the local name and does not mutate the dict.
-        final_trajectories: List[List[TurnRecord]] = []
-        for task_id, task_turns in groups.items():
-            item = next(it for it in items if it["task_id"] == task_id)
-            rewards = [
-                compute_trajectory_reward(turns, decay=args.decay)
-                for turns in task_turns
-            ]
-            std = float(np.std(rewards, ddof=1)) if len(rewards) > 1 else 0.0
-            for _ in range(args.dynamic_sampling_attempts):
-                if std >= args.dynamic_sampling_min_std:
-                    break
-                new_turns = loop.run_until_complete(
-                    collect_group_rollouts(
-                        backend, [item], args.group_size, tokenizer, args,
-                        max_concurrent=args.max_concurrent,
-                    )
-                )
-                new_rewards = [
-                    compute_trajectory_reward(t, decay=args.decay)
-                    for t in new_turns
-                ]
-                new_std = (
-                    float(np.std(new_rewards, ddof=1))
-                    if len(new_rewards) > 1
-                    else 0.0
-                )
-                ds_resamples += 1
-                if new_std > std:
-                    task_turns, rewards, std = new_turns, new_rewards, new_std
+        groups: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+        for nd in nodes:
+            if nd["record"] is None:
+                continue
+            groups[nd["group_id"]].append(nd)
+        n_pass = 0
+        for grp in groups.values():
+            rewards = [nd["record"].reward for nd in grp]
             all_rewards.extend(rewards)
             advantages = compute_group_advantages(rewards)
-            for turns, adv in zip(task_turns, advantages):
-                samples = build_training_samples(
-                    turns, adv, tokenizer, max_seq_length=args.max_seq_length
+            for nd, adv in zip(grp, advantages):
+                if nd["passed"]:
+                    n_pass += 1
+                samples = build_tree_node_samples(
+                    nd["record"], adv, tokenizer, max_seq_length=args.max_seq_length
                 )
                 all_samples.extend(samples)
-            final_trajectories.extend(task_turns)
 
-        # Reflects what was actually trained on (post-resampling).
-        trajectories = final_trajectories
+        # In the tree rollout the trajectory concept dissolves: each node IS
+        # one turn. Collect the nodes' TurnRecords directly (no [[record]]
+        # wrapping) for metric aggregation.
+        node_records: List[TurnRecord] = [
+            nd["record"] for nd in nodes if nd["record"] is not None
+        ]
+        tree_stats = {
+            "n_nodes": len(node_records),
+            "n_groups": len(groups),
+            "n_pass": n_pass,
+            "max_depth": max((nd["depth"] for nd in nodes), default=0),
+        }
 
         mean_reward = float(np.mean(all_rewards)) if all_rewards else 0.0
         std_reward = float(np.std(all_rewards)) if all_rewards else 0.0
@@ -803,7 +985,7 @@ def main():
         # Per-metric behavior vector (16 metrics) averaged over all turns this
         # iteration - surfaces what the model is actually doing, not just the
         # scalar reward.
-        agg = aggregate_metric_vectors(trajectories)
+        agg = aggregate_metric_vectors(node_records)
         mm = agg["metric_means"]
         print(
             "  metrics mean: "
@@ -819,8 +1001,7 @@ def main():
             "mean_reward": mean_reward,
             "std_reward": std_reward,
             "n_samples": len(all_samples),
-            "n_trajectories": len(trajectories),
-            "ds_resamples": ds_resamples,
+            **tree_stats,
             **agg,
             "grpo": {},
         }
