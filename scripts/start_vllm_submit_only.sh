@@ -10,7 +10,9 @@
 #
 # Key points:
 # - VLLM_ALLOW_RUNTIME_LORA_UPDATING=1 is required for /v1/load_lora_adapter.
-# - --max-num-seqs 2 keeps the KV-cache small because GRPO uses max_concurrent=1.
+# - --max-num-seqs 8 matches GRPO max_concurrent=8 for parallel rollouts;
+#   gpu-memory-utilization 0.4 caps the KV-cache budget so this only raises
+#   concurrency, not memory.
 # - --gpu-memory-utilization 0.4 leaves room for the GRPO training process.
 # - The initial LoRA module is the latest SFT adapter; GRPO will call
 #   /v1/load_lora_adapter at runtime to swap in new checkpoints.
@@ -25,5 +27,5 @@ export VLLM_ALLOW_RUNTIME_LORA_UPDATING=1
   --lora-modules scribe_adapter=/root/autodl-tmp/outputs/qwen2.5-1.5b-sft-gsm8k-submit-only-r64/final_lora \
   --gpu-memory-utilization 0.4 \
   --max-model-len 16384 \
-  --max-num-seqs 2 \
+  --max-num-seqs 8 \
   --port 8000

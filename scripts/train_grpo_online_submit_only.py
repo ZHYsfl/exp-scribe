@@ -235,8 +235,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max_concurrent",
         type=int,
-        default=1,
-        help="Max concurrent vLLM rollouts (lower if you see Hermes 'Already borrowed' errors)",
+        default=8,
+        help="Max concurrent vLLM rollouts. Plain-text tool parsing (submit-only, "
+             "no --tool-call-parser) avoids the Hermes parser concurrency bug, so "
+             "this can be >1; lower if you still see 'Already borrowed' errors.",
     )
     parser.add_argument(
         "--max_tokens",
