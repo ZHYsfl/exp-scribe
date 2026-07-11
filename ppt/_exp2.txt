@@ -1,0 +1,24 @@
+[96m[Slidev] Try the new browser exporter![39m
+[96mYou can use the browser exporter instead by starting the dev server as normal and visit[39m [34mlocalhost:[39m[2m<port>[22m[34m/export[39m
+
+
+
+  [36m●[39m[34m■[39m[33m▲[39m
+[1m  Slidev[22m  [34mv52.14.2[39m [33m(global)[39m
+
+[2m  theme       [22m[32m@slidev/theme-seriph[39m
+[2m  css engine  [22m[34munocss[39m
+[2m  entry       [22m[2m/root/autodl-tmp/ppt/[22mslides.md
+locator.waitFor: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('[data-slidev-no="10"]') to be visible[22m
+
+    at go (/usr/lib/node_modules/@slidev/cli/dist/export-C4evmDwN.mjs:142:15)
+    at async genPdfBuffer (/usr/lib/node_modules/@slidev/cli/dist/export-C4evmDwN.mjs:210:4)
+    at async genPageWithClicks (/usr/lib/node_modules/@slidev/cli/dist/export-C4evmDwN.mjs:200:3)
+    at async genPagePdfPerSlide (/usr/lib/node_modules/@slidev/cli/dist/export-C4evmDwN.mjs:228:4)
+    at async exportSlides (/usr/lib/node_modules/@slidev/cli/dist/export-C4evmDwN.mjs:116:24)
+    at async Object.handler (/usr/lib/node_modules/@slidev/cli/dist/cli.mjs:378:19) {
+  log: [ `  - waiting for locator('[data-slidev-no="10"]') to be visible` ],
+  name: 'TimeoutError'
+}
