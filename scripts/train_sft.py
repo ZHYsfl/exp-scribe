@@ -11,7 +11,7 @@ Usage:
         --num_train_epochs 1 \
         --per_device_train_batch_size 1 \
         --gradient_accumulation_steps 4 \
-        --lora_r 16
+        --lora_r 64
 
 Requirements (add to Scribe/requirements.txt or install manually):
     unsloth
@@ -66,13 +66,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--lora_r",
         type=int,
-        default=16,
+        default=64,
         help="LoRA r",
     )
     parser.add_argument(
         "--lora_alpha",
         type=int,
-        default=16,
+        default=64,
         help="LoRA alpha",
     )
     parser.add_argument(

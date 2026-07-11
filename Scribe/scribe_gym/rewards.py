@@ -92,8 +92,8 @@ class TurnRewardConfig:
     # (w1) is the dominant signal but not extreme; the summary-hack guard rails
     # (w6/w11/w12/w13) are kept as symbolic/anti-copy signals rather than
     # primary drivers. Sum of wi == 1.0.
-    w1: float = 0.52   # answer + natural termination (core dominant signal)
-    w2: float = 0.08   # tool usage (submit + parallel dup) - infrastructure
+    w1: float = 0.60   # answer + natural termination (core dominant signal) [was 0.52]
+    w2: float = 0.04   # tool usage (submit + parallel dup) - infrastructure [was 0.08]
     w3: float = 0.02   # step length - efficiency
     w4: float = 0.10   # format - gatekeeper
     w5: float = 0.02   # rollout tokens - efficiency
@@ -104,10 +104,10 @@ class TurnRewardConfig:
     w10: float = 0.02  # fluency (judge)
     w11: float = 0.01  # compression ratio - symbolic
     w12: float = 0.03  # cross-block n-gram overlap - anti copy-paste
-    w13: float = 0.03  # intra-block n-gram overlap - anti loop
+    w13: float = 0.02  # intra-block n-gram overlap - anti loop [was 0.03]
     w14: float = 0.02  # malformed tool-call penalty - infrastructure
-    w15: float = 0.02  # repeated tool-call penalty - infrastructure
-    w16: float = 0.05  # cross-turn duplicate submit penalty - anti stalling
+    w15: float = 0.01  # repeated tool-call penalty - infrastructure [was 0.02]
+    w16: float = 0.03  # cross-turn duplicate submit penalty - anti stalling [was 0.05]
     # penalty magnitudes
     truncation_penalty: float = 0.20
     submit_penalty: float = 0.15
