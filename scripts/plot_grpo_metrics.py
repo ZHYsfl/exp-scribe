@@ -108,10 +108,13 @@ def main() -> None:
             ylim=(0.0, 1.05),
         )
 
-    # 17: KL divergence (grpo/kl).
-    kls = [r.get("grpo", {}).get("grpo/kl", 0.0) for r in records]
-    _plot(iters, kls, title="GRPO KL divergence (π_θ || π_ref)",
-          ylabel="grpo/kl", out_path=out_dir / "kl.png")
+    # 17: GSPO step-ratio drift (scribe/max_step_ratio). With the old-anchored
+    # step-level ratio this stays near 1 each iter; a spike means some step
+    # moved far in one update. (Replaces the old grpo/kl plot - KL to frozen
+    # SFT was removed; the step-ratio peak is now the drift gauge.)
+    ratios = [r.get("scribe", {}).get("scribe/max_step_ratio", 0.0) for r in records]
+    _plot(iters, ratios, title="GSPO step-ratio peak (π_θ/π_θold per step)",
+          ylabel="scribe/max_step_ratio", out_path=out_dir / "step_ratio.png")
 
     # 18: reward std (group spread -> advantage signal strength).
     stds = [r.get("std_reward", 0.0) for r in records]

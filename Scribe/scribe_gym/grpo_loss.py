@@ -1,15 +1,32 @@
-"""Manual GRPO loss for SCRIBE with token-level rollout mask.
+"""Manual SCRIBE policy-update loss (GSPO-token / DAPO hybrid).
 
 TRL's built-in GRPOTrainer assumes a completion-level reward and uniform token
 weighting. SCRIBE needs fine-grained credit: only rollout tokens (T/O/A/R/S)
 participate in the loss, and each rollout token carries a per-step credit that
-already incorporates the trajectory advantage.
+already incorporates the (tree sibling-group) advantage.
 
-The loss implemented here is the standard GRPO objective:
+The loss is a GSPO-token / DAPO hybrid:
 
-    loss = -mean[ min(ratio * A, clip(ratio, 1-ε, 1+ε) * A) ] + β * KL
+    loss = -mean[ min(s_step * A_t, clip(s_step, 1-eps, 1+eps) * A_t) ]
 
-where ``A`` is the pre-computed token credit (advantage).
+where ``A_t`` is the pre-computed per-token credit (advantage) and ``s_step``
+is the GSPO **step-level** importance ratio: one scalar per step (sample),
+defined as the length-normalized geometric mean of the per-token ratios,
+
+    s_step = exp( (1/|step|) * sum_t log( pi_theta(y_t) / pi_theta_old(y_t) ) )
+
+clipped at the step level. This fixes two problems with the old per-token
+pi_theta/pi_ref ratio: (1) it is a proper importance ratio (old = policy at
+iteration start, not frozen SFT) so the clip is a per-iteration trust region,
+not a cumulative SFT ceiling that freezes learning; (2) GSPO shows token-level
+ratios are ill-posed (1 sample/token cannot do distribution correction) and
+accumulate noise over a sequence - the step-level ratio with length
+normalization is stable and matches the step-level reward unit.
+
+KL to the frozen SFT reference is REMOVED (DAPO): a reasoning policy is meant
+to diverge from the SFT base, and a KL anchor to frozen SFT pulls it back and
+flattens learning. Stability is provided by the step-level clip (+ grad clip
+in the trainer). ref_model is therefore no longer used in the loss.
 """
 
 from __future__ import annotations
@@ -22,73 +39,64 @@ import torch.nn.functional as F
 
 def compute_grpo_loss(
     policy_logprobs: torch.Tensor,
-    reference_logprobs: torch.Tensor,
+    old_logprobs: torch.Tensor,
     token_credits: torch.Tensor,
     rollout_mask: torch.Tensor,
     epsilon: float = 0.2,
-    beta: float = 0.04,
 ) -> Tuple[torch.Tensor, Dict[str, float]]:
-    """Compute GRPO loss with token-level credit mask.
+    """Compute the GSPO-token / DAPO loss with step-level importance ratio.
 
     Args:
         policy_logprobs: [batch, seq_len] per-token log-probs under the policy.
-        reference_logprobs: [batch, seq_len] per-token log-probs under ref.
+        old_logprobs: [batch, seq_len] per-token log-probs under the OLD policy
+            (the policy at the start of this iteration, pre-update). NOT the
+            frozen SFT reference.
         token_credits: [batch, seq_len] pre-computed advantage per token.
         rollout_mask: [batch, seq_len] 1 for rollout tokens, 0 otherwise.
-        epsilon: PPO/GRPO clipping parameter.
-        beta: KL penalty coefficient.
+        epsilon: clipping parameter for the step-level ratio.
 
     Returns:
         loss: scalar tensor.
-        metrics: dict of useful scalars (loss, policy_loss, kl, clip_frac, ...).
+        metrics: dict of useful scalars.
     """
     # Masked mean helper.
     def _masked_mean(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         return (x * mask).sum() / mask.sum().clamp_min(1.0)
 
-    ratio = torch.exp(policy_logprobs - reference_logprobs.detach())
+    # Per-token log-ratio vs the OLD policy (proper importance ratio).
+    log_ratio = policy_logprobs - old_logprobs.detach()
+
+    # GSPO step-level ratio: one scalar per step (row) = length-normalized
+    # geometric mean of per-token ratios over that step's rollout tokens.
+    masked_sum = (log_ratio * rollout_mask).sum(dim=1)  # [batch]
+    n_tok = rollout_mask.sum(dim=1).clamp_min(1.0)  # [batch]
+    step_log_ratio = masked_sum / n_tok
+    s_step = torch.exp(step_log_ratio)  # [batch], one ratio per step
+
+    ratio = s_step.unsqueeze(1)  # broadcast to all tokens in the step
     clipped_ratio = torch.clamp(ratio, 1.0 - epsilon, 1.0 + epsilon)
 
     surrogate1 = ratio * token_credits
     surrogate2 = clipped_ratio * token_credits
     policy_loss = -_masked_mean(torch.min(surrogate1, surrogate2), rollout_mask)
 
-    # Per-token KL using the k1 (log-ratio) estimator. Rollout tokens are
-    # sampled from the policy, so log_ratio = log π_θ − log π_ref is an UNBIASED
-    # estimate of the forward KL:  KL(π_θ‖π_ref) = E_{x~π_θ}[log π_θ − log π_ref].
-    # We use k1 (linear) instead of k3 (exp(δ)−δ−1) deliberately: k3's exp()
-    # detonates when the policy raises a token's prob far above the ref (δ≫0),
-    # which caused the repeated kl_max spikes (205/153/139) that destabilized
-    # training. k1 is linear, so a single extreme token can't blow up the loss -
-    # it stays bounded and is handled by max_grad_norm. Cost: higher per-token
-    # variance, but no explosions. (Our old k3 with this sign was also biased -
-    # E[exp(δ)−δ−1] = χ²−KL, matching KL only for small drift.)
-    log_ratio = policy_logprobs - reference_logprobs.detach()
-    kl_per_token = log_ratio
-    kl_loss = _masked_mean(kl_per_token, rollout_mask)
-
-    loss = policy_loss + beta * kl_loss
+    # KL removed (DAPO): no beta * KL(pi_theta || pi_ref) term.
+    loss = policy_loss
 
     with torch.no_grad():
-        clip_frac = _masked_mean(
-            ((ratio - 1.0).abs() > epsilon).float(), rollout_mask
-        )
-        # Per-token drift peaks: with k1 (linear) kl_per_token == log_ratio, so
-        # kl_max is just the largest per-token log-ratio - a direct, non-explosive
-        # drift gauge (k3 used to exp() this into detonation). max_log_ratio is
-        # its absolute-value twin. Watch these for policy-ref divergence.
-        mask_bool = rollout_mask.bool()
-        masked_lr = log_ratio[mask_bool]
-        masked_kl = kl_per_token[mask_bool]
+        # A step is clipped when its s_step leaves [1-eps, 1+eps]; weight by the
+        # step's token count so clip_frac is a fraction of rollout tokens.
+        step_clipped = ((s_step - 1.0).abs() > epsilon).float()  # [batch]
+        clip_frac = (step_clipped * n_tok).sum() / n_tok.sum().clamp_min(1.0)
         metrics = {
-            "grpo/loss": loss.item(),
-            "grpo/policy_loss": policy_loss.item(),
-            "grpo/kl": kl_loss.item(),
-            "grpo/clip_frac": clip_frac.item(),
-            "grpo/mean_credit": _masked_mean(token_credits, rollout_mask).item(),
-            "grpo/rollout_tokens": rollout_mask.sum().item(),
-            "grpo/max_log_ratio": masked_lr.abs().max().item() if masked_lr.numel() else 0.0,
-            "grpo/kl_max": masked_kl.max().item() if masked_kl.numel() else 0.0,
+            "scribe/loss": loss.item(),
+            "scribe/policy_loss": policy_loss.item(),
+            "scribe/clip_frac": clip_frac.item(),
+            "scribe/mean_credit": _masked_mean(token_credits, rollout_mask).item(),
+            "scribe/rollout_tokens": rollout_mask.sum().item(),
+            "scribe/mean_step_ratio": s_step.mean().item(),
+            "scribe/max_step_ratio": s_step.max().item(),
+            "scribe/min_step_ratio": s_step.min().item(),
         }
 
     return loss, metrics

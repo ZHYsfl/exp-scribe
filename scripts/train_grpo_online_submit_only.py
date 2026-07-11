@@ -1,24 +1,24 @@
-"""Online GRPO training for SCRIBE using a local vLLM rollout engine.
+"""Online RL training for SCRIBE using a local vLLM rollout engine.
 
 This script implements the full online loop described in the README:
 
     for iteration:
-        1. rollout: sample G trajectories per task with vLLM
-        2. reward:  compute per-trajectory reward and group advantages
-        3. update:  run GRPO update on rollout tokens
+        1. rollout: n-ary tree rollout per task with vLLM (siblings = GRPO group)
+        2. reward:  per-node 16-metric turn_reward + sibling-group advantage
+        3. update:  GSPO step-ratio update on rollout tokens
         4. sync:    push the updated LoRA weights back to vLLM
 
 The rollout logic reuses the existing SCRIBE runner/env/reward infra; only the
 LLM generation backend is swapped for a local vLLM engine.
 
-Example (3090, 0.5B model):
-    python scripts/train_grpo_online.py \
-        --base_model /path/to/qwen2.5-0.5b-instruct \
+Example:
+    python scripts/train_grpo_online_submit_only.py \
+        --base_model /path/to/qwen2.5-1.5b-instruct \
         --sft_lora_path outputs/scribe_sft/final_lora \
-        --output_dir outputs/scribe_grpo \
+        --output_dir outputs/scribe_rl \
         --num_iterations 10 \
         --batch_size 4 \
-        --group_size 6 \
+        --branch_n 6 --branch_dropout 0.5 \
         --num_inner_epochs 1
 """
 
@@ -59,7 +59,6 @@ from Scribe.scribe_gym.grpo_loss import compute_grpo_loss, gather_logprobs
 from Scribe.scribe_gym.rl_utils import (
     build_tree_node_samples,
     compute_group_advantages,
-    compute_trajectory_reward,
 )
 from Scribe.scribe_gym.turn_record import TurnRecord
 from Scribe.scribe_gym.system_prompts import SUBMIT_ONLY_SYSTEM_PROMPT
@@ -118,12 +117,6 @@ def parse_args() -> argparse.Namespace:
         help="Number of distinct tasks per iteration",
     )
     parser.add_argument(
-        "--group_size",
-        type=int,
-        default=6,
-        help="Number of trajectories sampled per task",
-    )
-    parser.add_argument(
         "--num_inner_epochs",
         type=int,
         default=1,
@@ -154,16 +147,10 @@ def parse_args() -> argparse.Namespace:
         help="AdamW weight decay",
     )
     parser.add_argument(
-        "--kl_coef",
-        type=float,
-        default=0.04,
-        help="KL penalty coefficient beta",
-    )
-    parser.add_argument(
         "--clip_epsilon",
         type=float,
         default=0.2,
-        help="GRPO clipping epsilon",
+        help="GSPO step-level clipping epsilon",
     )
     parser.add_argument(
         "--max_grad_norm",
@@ -173,29 +160,6 @@ def parse_args() -> argparse.Namespace:
              "0 disables). Standard RL safety - without it a single high-"
              "advantage trajectory can shove the policy far from the ref and "
              "detonate the k3 KL estimator (cf. iter-15 spike).",
-    )
-    parser.add_argument(
-        "--decay",
-        type=float,
-        default=0.8,
-        help="Trajectory reward decay factor",
-    )
-    parser.add_argument(
-        "--dynamic_sampling_attempts",
-        type=int,
-        default=3,
-        help="Dynamic Sampling (DAPO): for groups whose trajectory-reward std "
-             "is below --dynamic_sampling_min_std (all-correct / all-wrong -> "
-             "weak/zero advantage), resample up to this many times and keep "
-             "the group with the largest std. 0 disables.",
-    )
-    parser.add_argument(
-        "--dynamic_sampling_min_std",
-        type=float,
-        default=0.05,
-        help="Dynamic Sampling: a group with sample-std below this is treated "
-             "as low-signal and triggers resampling. w1=0.60 dominates the "
-             "reward, so a mixed group's std is well above this.",
     )
     parser.add_argument(
         "--branch_n",
@@ -453,81 +417,6 @@ def save_adapter(model: Any, path: Path, iteration: int) -> None:
     print(f"Saved adapter to {out}")
 
 
-async def rollout_one(
-    backend: VLLMBackend,
-    item: Dict[str, Any],
-    tokenizer: Any,
-    args: argparse.Namespace,
-) -> List[TurnRecord]:
-    """Run one SCRIBE trajectory for a single task using the vLLM backend."""
-    env = make_gsm8k_submit_only_env(
-        item,
-        workspace_root=Path(args.output_dir) / "rollout_ws" / item["task_id"],
-        max_steps=args.max_steps_per_turn,
-    )
-    counter = DeepSeekTokenCounter()
-    # Compression disabled by default for small-model experiments; vLLM handles
-    # its own context budget and the trajectory is short.
-    hm = HistoryManager(counter, k=2, hard_limit=None)
-    # Dummy LLMConfig: the actual generation happens through the vLLM backend.
-    cfg = LLMConfig(api_key="", model=args.vllm_lora_name, base_url=args.vllm_base_url)
-    agent = GymBackedAgent(
-        config=cfg,
-        env=env,
-        history_manager=hm,
-        llm_backend=backend,
-        reward_config=DEFAULT_TURN_REWARD_CONFIG,
-        token_counter=counter,
-        max_tokens=args.max_tokens,
-        enable_judge=args.enable_judge,
-    )
-    runner = ScribeRunner(
-        agent=agent,
-        system_prompt=SYSTEM_PROMPT,
-        done_mode="threshold",
-        reward_threshold=args.reward_threshold,
-        max_turns=args.max_turns,
-        tokenizer=tokenizer,
-    )
-    try:
-        await runner.run()
-    finally:
-        # Close the per-agent judge HTTP client so its httpx connection pool
-        # doesn't leak "Event loop is closed" cleanup tasks across iterations.
-        await agent.aclose()
-    env.close()
-    return list(hm._turns)
-
-
-async def collect_group_rollouts(
-    backend: VLLMBackend,
-    items: List[Dict[str, Any]],
-    group_size: int,
-    tokenizer: Any,
-    args: argparse.Namespace,
-    max_concurrent: int = 8,
-) -> List[List[TurnRecord]]:
-    """Sample ``group_size`` trajectories for each task in ``items``.
-
-    Rollouts are parallelized with a semaphore to bound concurrent load on the
-    vLLM server. When the backend uses plain-text tool parsing it avoids the
-    Hermes parser concurrency bug; in that case ``max_concurrent`` can be
-    raised. If you still see ``Already borrowed`` errors, lower it.
-    """
-    semaphore = asyncio.Semaphore(max_concurrent)
-
-    async def _one(item: Dict[str, Any]) -> List[TurnRecord]:
-        async with semaphore:
-            return await rollout_one(backend, item, tokenizer, args)
-
-    tasks = [
-        _one(item)
-        for _ in range(group_size)
-        for item in items
-    ]
-    return await asyncio.gather(*tasks)
-
-
 async def run_one_turn(
     backend: VLLMBackend,
     item: Dict[str, Any],
@@ -729,10 +618,11 @@ def collate_fn(batch: List[Dict[str, Any]], pad_token_id: int) -> Dict[str, torc
         "token_credits": _pad("token_credits", 0.0),
         "rollout_mask": _pad("rollout_mask", 0),
         "labels_mask": _pad("rollout_mask", 0),
+        "old_logprobs": _pad("old_logprobs", 0.0),
     }
 
 
-def do_grpo_update(
+def do_scribe_update(
     policy: Any,
     ref_model: Any,
     optimizer: torch.optim.Optimizer,
@@ -740,9 +630,32 @@ def do_grpo_update(
     tokenizer: Any,
     args: argparse.Namespace,
 ) -> Dict[str, float]:
-    """Run one epoch of GRPO updates over the sampled trajectories."""
+    """Run one epoch of GSPO-token updates over the sampled tree nodes.
+
+    ref_model is now UNUSED (KL to frozen SFT was removed - see grpo_loss). It
+    is kept in the signature to avoid churning the call site / load_models; it
+    can be dropped to free ~one model copy of VRAM as a follow-up.
+    """
     policy.train()
-    ref_model.eval()
+
+    # 1. Precompute OLD-policy logprobs (policy at iteration start, pre-update)
+    #    for the GSPO step-level importance ratio. This is a PROPER importance
+    #    ratio (old = policy that generated the rollout), NOT frozen SFT - so
+    #    the clip is a per-iteration trust region instead of a cumulative SFT
+    #    ceiling. One no-grad forward per sample; eval mode for deterministic
+    #    (dropout-off) logprobs.
+    policy.eval()
+    with torch.no_grad():
+        for s in samples:
+            # Wrap the single sample as a batch of 1 ([1, seq]) since
+            # gather_logprobs expects [batch, seq]; lp is [1, seq], so lp[0]
+            # drops the batch dim back to [seq] before storing as a list.
+            inp = torch.tensor([s["input_ids"]], device=policy.device)
+            am = torch.tensor([s["attention_mask"]], device=policy.device)
+            rm = torch.tensor([s["rollout_mask"]], device=policy.device)
+            lp = gather_logprobs(policy, inp, am, rm)
+            s["old_logprobs"] = lp[0].tolist()
+    policy.train()
 
     loader = DataLoader(
         samples,
@@ -753,21 +666,17 @@ def do_grpo_update(
 
     total_metrics: Dict[str, float] = defaultdict(float)
     n_batches = 0
-    # Drift peaks are global maxima, not means - track the worst token across
-    # all batches so a detonation isn't diluted by averaging.
-    max_log_ratio_peak = 0.0
-    kl_peak = 0.0
+    # Step-ratio drift peak: global max across batches (not diluted by averaging).
+    # With the old-anchored step-level ratio this should stay near 1 each iter;
+    # a spike means some step moved far in one update.
+    max_step_ratio_peak = 0.0
 
     for batch in loader:
         input_ids = batch["input_ids"].to(policy.device)
         attention_mask = batch["attention_mask"].to(policy.device)
         token_credits = batch["token_credits"].to(policy.device)
         rollout_mask = batch["rollout_mask"].to(policy.device)
-
-        with torch.no_grad():
-            ref_logprobs = gather_logprobs(
-                ref_model, input_ids, attention_mask, rollout_mask
-            )
+        old_logprobs = batch["old_logprobs"].to(policy.device)
 
         policy_logprobs = gather_logprobs(
             policy, input_ids, attention_mask, rollout_mask
@@ -775,11 +684,10 @@ def do_grpo_update(
 
         loss, metrics = compute_grpo_loss(
             policy_logprobs,
-            ref_logprobs,
+            old_logprobs,
             token_credits,
             rollout_mask,
             epsilon=args.clip_epsilon,
-            beta=args.kl_coef,
         )
 
         loss = loss / args.gradient_accumulation_steps
@@ -796,18 +704,16 @@ def do_grpo_update(
 
         for k, v in metrics.items():
             total_metrics[k] += v
-        max_log_ratio_peak = max(
-            max_log_ratio_peak, metrics.get("grpo/max_log_ratio", 0.0)
+        max_step_ratio_peak = max(
+            max_step_ratio_peak, metrics.get("scribe/max_step_ratio", 0.0)
         )
-        kl_peak = max(kl_peak, metrics.get("grpo/kl_max", 0.0))
         n_batches += 1
 
     if n_batches == 0:
         return {}
     result = {k: v / n_batches for k, v in total_metrics.items()}
-    # Overwrite the two drift peaks with global maxima (not batch-averaged).
-    result["grpo/max_log_ratio"] = max_log_ratio_peak
-    result["grpo/kl_max"] = kl_peak
+    # Overwrite the step-ratio peak with the global maximum (not batch-averaged).
+    result["scribe/max_step_ratio"] = max_step_ratio_peak
     return result
 
 
@@ -1003,7 +909,7 @@ def main():
             "n_samples": len(all_samples),
             **tree_stats,
             **agg,
-            "grpo": {},
+            "scribe": {},
         }
 
         if not all_samples:
@@ -1014,13 +920,13 @@ def main():
             continue
 
         # 4. GRPO update.
-        print("Running GRPO update...")
+        print("Running SCRIBE update (GSPO-token)...")
         # Free rollout-side CUDA cache before the backward pass; vLLM and the
         # rollout graph can leave fragmented allocations that compete with the
         # training activation memory.
         torch.cuda.empty_cache()
         for epoch in range(args.num_inner_epochs):
-            metrics = do_grpo_update(
+            metrics = do_scribe_update(
                 policy,
                 ref_model,
                 optimizer,
@@ -1030,7 +936,7 @@ def main():
             )
             print(f"  inner epoch {epoch}: {metrics}")
             global_step += 1
-        log_record["grpo"] = metrics
+        log_record["scribe"] = metrics
 
         # 5. Sync updated LoRA to vLLM.
         if (iteration + 1) % args.save_steps == 0 or iteration == args.num_iterations - 1:
