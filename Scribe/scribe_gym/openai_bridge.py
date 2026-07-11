@@ -131,6 +131,11 @@ class GymBackedAgent(Agent):
         # this fallback correctly sends judge calls to the .env model instead of
         # the dummy actor config.
         self.judge = judge
+        # Per-agent judge HTTP client (owned by this agent, closed in aclose()).
+        # None when the judge is injected or disabled. Tracked explicitly so the
+        # httpx connection pool can be torn down per-trajectory instead of
+        # leaking "Event loop is closed" cleanup tasks across iterations.
+        self._judge_client: Optional[AsyncOpenAI] = None
         if self.judge is None and enable_judge:
             judge_api_key = (
                 os.getenv("JUDGE_API_KEY") or os.getenv("LLM_API_KEY") or config.api_key
@@ -144,6 +149,7 @@ class GymBackedAgent(Agent):
             judge_client = AsyncOpenAI(
                 api_key=judge_api_key, base_url=judge_base_url
             )
+            self._judge_client = judge_client
             if judge_semaphore is None:
                 max_concurrent = int(os.getenv("JUDGE_MAX_CONCURRENT", "5"))
                 judge_semaphore = asyncio.Semaphore(max_concurrent)
@@ -159,6 +165,20 @@ class GymBackedAgent(Agent):
         # AsyncOpenAI client. The backend must expose ``chat.completions.create``.
         if llm_backend is not None:
             self.client = llm_backend
+
+    async def aclose(self) -> None:
+        """Close HTTP clients owned by this agent (the per-agent judge client).
+
+        The shared actor backend (``llm_backend``) is NOT closed here - its
+        lifecycle is owned by the caller (it is reused across trajectories /
+        iterations). Only the judge AsyncOpenAI client created in ``__init__``
+        is closed, so its httpx connection pool doesn't leak cleanup tasks that
+        raise ``RuntimeError: Event loop is closed`` after the event loop is
+        shut down.
+        """
+        if self._judge_client is not None:
+            await self._judge_client.aclose()
+            self._judge_client = None
 
     def _get_tools(self) -> List[Dict[str, Any]]:
         return self.env.get_tools()

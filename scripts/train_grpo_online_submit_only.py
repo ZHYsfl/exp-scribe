@@ -453,7 +453,12 @@ async def rollout_one(
         max_turns=args.max_turns,
         tokenizer=tokenizer,
     )
-    await runner.run()
+    try:
+        await runner.run()
+    finally:
+        # Close the per-agent judge HTTP client so its httpx connection pool
+        # doesn't leak "Event loop is closed" cleanup tasks across iterations.
+        await agent.aclose()
     env.close()
     return list(hm._turns)
 
@@ -682,6 +687,14 @@ def main():
     metrics_log_path.write_text("")
 
     global_step = 0
+    # One persistent event loop for the whole run. Using asyncio.run() per
+    # iteration creates+closes a fresh loop each iter, but the shared VLLMBackend
+    # (an AsyncOpenAI/httpx client) keeps connection-pool tasks bound to the old
+    # loop; when a later iteration's loop schedules them they raise
+    # "RuntimeError: Event loop is closed" (and so do the per-trajectory judge
+    # clients). A single loop for all iters avoids the cross-loop leak.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     for iteration in range(args.num_iterations):
         print(f"\n{'='*60}")
         print(f"Iteration {iteration}/{args.num_iterations}")
@@ -694,7 +707,7 @@ def main():
 
         # 2. Rollout group.
         print("Collecting rollouts...")
-        trajectories = asyncio.run(
+        trajectories = loop.run_until_complete(
             collect_group_rollouts(
                 backend, items, args.group_size, tokenizer, args,
                 max_concurrent=args.max_concurrent,
@@ -798,6 +811,7 @@ def main():
     policy.save_pretrained(final_path)
     tokenizer.save_pretrained(final_path)
     print(f"Saved final LoRA to {final_path}")
+    loop.close()
 
 
 if __name__ == "__main__":
