@@ -80,7 +80,7 @@ def main() -> None:
     ap.add_argument(
         "--log",
         type=str,
-        default="outputs/qwen2.5-1.5b-grpo-gsm8k-submit-only-100/metrics_log.jsonl",
+        default="outputs/qwen2.5-1.5b-grpo-gsm8k-submit-only-r64-w060-b040-conc8/metrics_log.jsonl",
     )
     ap.add_argument("--out", type=str, default="pics")
     args = ap.parse_args()
