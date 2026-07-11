@@ -1,0 +1,74 @@
+\begin{table*}[t]
+\centering
+\small
+\resizebox{\textwidth}{!}{
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{l|ccc|c|cccc|c|c}
+\toprule
+\multirow{2}{*}{\textbf{Methods}} 
+    & \multicolumn{3}{c|}{\textbf{General QA}} 
+    &  \multirow{2}{*}{\textbf{Gen-Avg}}
+    & \multicolumn{4}{c|}{\textbf{Multi-Hop QA}} 
+    &  \multirow{2}{*}{\textbf{MH-Avg}}
+    & \multirow{2}{*}{\textbf{Avg}} \\
+ & NQ$^{\dagger}$ & TriviaQA$^{\star}$ & PopQA$^{\star}$ 
+ & 
+ & HotpotQA$^{\dagger}$ & 2Wiki$^{\star}$ & Musique$^{\star}$ & Bamboogle$^{\star}$
+ & 
+ & \\
+\midrule
+\multicolumn{11}{l}{\textbf{Qwen2.5-7b-Base/Instruct}} \\
+\midrule
+Direct Inference$^{\lozenge}$     & 0.134 & 0.408 & 0.140 & 0.227 & 0.183 & 0.250 & 0.031 & 0.120 & 0.146 & 0.181 \\
+% IRCoT$^{\lozenge}$                & 0.224 & 0.478 & 0.301 & 0.334 & 0.133 & 0.149 & 0.072 & 0.224 & 0.145 & 0.239 \\
+Search-o1$^{\lozenge}$            & 0.151 & 0.443 & 0.131 & 0.242 & 0.187 & 0.176 & 0.062 & 0.296 & 0.180 & 0.206 \\
+RAG$^{\lozenge}$                  & 0.349 & 0.585 & 0.392 & 0.442 & 0.299 & 0.235 & 0.058 & 0.208 & 0.200 & 0.304 \\
+% SFT$^{\lozenge}$                  & 0.318 & 0.354 & 0.121 & 0.264 & 0.217 & 0.259 & 0.066 & 0.112 & 0.164 & 0.207 \\
+R1-base$^{\lozenge}$              & 0.297 & 0.539 & 0.199 & 0.345 & 0.242 & 0.273 & 0.083 & 0.203 & 0.200 & 0.262 \\
+R1-instruct$^{\lozenge}$          & 0.270 & 0.537 & 0.199 & 0.335 & 0.237 & 0.292 & 0.072 & 0.293 & 0.224 & 0.271 \\
+Rejection Sampling$^{\lozenge}$   & 0.360 & 0.592 & 0.380 & 0.444 & 0.331 & 0.296 & 0.123 & 0.355 & 0.276 & 0.348 \\
+Search-R1-PPO-Base$^{\lozenge}$   & 0.480 & 0.638 & 0.457 & 0.525 & 0.433 & 0.382 & 0.196 & 0.432 & 0.361 & 0.431 \\
+Search-R1-PPO-Ins$^{\lozenge}$   & 0.393 & 0.610 & 0.397 & 0.467 & 0.370 & 0.414 & 0.146 & 0.368 & 0.325  & 0.385 \\
+ZeroSearch-Base     & 0.424 & 0.664 & 0.604 & 0.564 & 0.320 & 0.340 & 0.180 & 0.333 & 0.293  & 0.409 \\
+ZeroSearch-Ins & 0.436 & 0.652 & 0.488 & 0.525 & 0.346 & 0.352 & 0.184 & 0.278 & 0.290 & 0.391 \\
+% ReasonRAG$^{\circ}$           & / & / & / & / & 0.384 & 0.436 & 0.128 & 0.360 & 0.327 & / \\
+% StepSearch-Base$^{\circ}$     & / & / & / & / & 0.380 & 0.385 & 0.216 & 0.467 & 0.362 & / \\
+% StepSearch-Ins$^{\circ}$ & / & / & / & / & 0.386 & 0.366 & 0.226 & 0.400 & 0.345 & / \\
+StepSearch
+& 0.364 & 0.565 & 0.390 & 0.440
+& 0.346 & 0.394 & 0.183 & 0.444 & 0.342 & 0.382 \\
+CriticSearch$^{\triangle}$       & - & - & - & - & 0.442 & 0.428 & 0.194 & 0.472 & 0.384 & - \\
+Tree-GRPO & 0.481 & 0.633 & 0.452 & 0.522 & 0.446 & 0.423 & 0.202 & 0.440 & 0.378 &  0.439\\
+\midrule
+\multicolumn{11}{c}{Qwen2.5-7b-Base} \\
+\midrule
+Search-R1-GRPO$^{\lozenge}$ & 0.395 & 0.560 & 0.388 & 0.448 & 0.326 & 0.297 & 0.125 & 0.360 & 0.277 & 0.350 \\
+% \rowcolor{gray!6} \multicolumn{11}{l}{\textbf{NQ-Only}} \\
+% +LLDS        & \textbf{0.514} & \textbf{0.666} & 0.470 & \textbf{0.550} & 0.403 & 0.368 & 0.151 & 0.347 & 0.317 & 0.417 (\textcolor{green}{+19.1\%}) \\
+% \rowcolor{gray!6}\multicolumn{11}{l}{\textbf{NQ+hotpot}} \\
+% +LLDS        & 0.504 & \textbf{0.666} & \textbf{0.471} & 0.547 & \textbf{0.465} & \textbf{0.475} & \textbf{0.209} & \textbf{0.444} & \textbf{0.398} & \textbf{0.462} (\textcolor{green}{+32.0\%})  \\
++LLDS       & \textbf{0.512} & \textbf{0.672} & \textbf{0.480} & \textbf{0.555} & \textbf{0.486} & \textbf{0.469} & \textbf{0.232} & \textbf{0.508} & \textbf{0.424} & \textbf{0.480} (\textcolor{green}{+37.1\%})   \\ 
+\midrule
+\multicolumn{11}{c}{Qwen2.5-7b-Ins} \\
+\midrule
+Search-R1-GRPO$^{\lozenge}$ & 0.429 & 0.623 & 0.427 & 0.493 & 0.386 & 0.346 & 0.162 & 0.400 & 0.324 & 0.396 \\
+% \rowcolor{gray!6} \multicolumn{11}{l}{\textbf{NQ-Only}} \\
+% +LLDS      & \textbf{0.517} & 0.645 & 0.460 & \textbf{0.541} & 0.401 & 0.298 & 0.158 & 0.411 & 0.317 & \textbf{0.413} (\textcolor{green}{+4.3\%}) \\
+% \rowcolor{gray!6}\multicolumn{11}{l}{\textbf{NQ+hotpot}} \\
+% +LLDS    & 0.498 & \textbf{0.662} & \textbf{0.464} & 0.541 & \textbf{0.473} & \textbf{0.443} & \textbf{0.228} & \textbf{0.516} & 0.415 & \textbf{0.469} (\textcolor{green}{+18.4\%})   \\
++LLDS     & \textbf{0.518} & \textbf{0.676} & \textbf{0.486} & \textbf{0.560} & \textbf{0.492} & \textbf{0.490} & \textbf{0.228} & \textbf{0.492} & \textbf{0.426} &  \textbf{0.483} (\textcolor{green}{+22.0\%})  \\ 
+\bottomrule
+\end{tabular}
+}
+\caption{Performance comparison on General QA and Multi-Hop QA datasets for \textbf{Qwen2.5-7b-Base/Instruct}. }
+\label{tab:qa_results}
+\vspace{-7mm}
+\end{table*}
+\section{Experiments and Analysis}
+\textbf{Experimental settings.} For training, we follow the setup in~\cite{jin2025search} and conduct experiments using two model families: Qwen-2.5-3B and Qwen-2.5-7B, each in both Base and Instruct variants~\citep{yang2024qwen2}. We follow the training configuration in Search-R1~\citep{jin2025search} and use \textbf{NQ+Hotpot (single-hop+multi-hop)}: the model is trained on a merged corpus combining NQ with HotpotQA~\citep{yang2018hotpotqa}, providing broader coverage of both open-domain and multi-hop reasoning. For the retrieval dataset, we use the 2018 Wikipedia dump~\citep{karpukhin2020dense} as the knowledge corpus and employ E5~\citep{wang2022text} as the dense retriever and fix the number of retrieved passages to three. Unless otherwise specified, we use the same optimization hyperparameters as Search-R1~\citep{jin2025search}, with the only modification being a reduced maximum turn from 4 to 3 for the NQ+Hotpot, improving training efficiency. Unless stated otherwise, the regularization weight is fixed at $\lambda = 0.2$. More details see Sec.~\ref{sec:add_hyp}.
+\\
+\textbf{Evaluation settings.} The Evaluation is performed on seven datasets, categorized as follows:
+(1) \textit{General QA:} NQ~\citep{kwiatkowski2019natural}, TriviaQA~\citep{joshi2017triviaqa}, and PopQA~\citep{mallen2022not}.
+(2) \textit{Multi-Hop QA:} HotpotQA~\citep{yang2018hotpotqa}, 2WikiMultiHopQA~\citep{ho2020constructing}, Musique~\citep{trivedi2022musique}, and Bamboogle~\citep{press2022measuring}. We follow~\cite{jin2025search} and adopt exact match (EM) as the evaluation metric. 
+\\
+\textbf{Baseline Methods.} To evaluate the effectiveness of \ours{}, we use baselines in Search-R1~\cite{jin2025search} and additionally include methods that improve training stability via dense rewards, namely StepSearch~\cite{zheng2025stepsearch}, CriticSearch~\citep{zhang2025criticsearch}, and TreeGRPO~\cite{ji2025tree}. See~\cref{sec:d_bm} for detailed descriptions.

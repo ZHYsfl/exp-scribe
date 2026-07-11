@@ -1,0 +1,185 @@
+\subsection{LLD Suppression regularization}
+To mitigate LLD, we propose a likelihood-preserving regularizer, \ours, which prevents unintended reductions in response likelihood during GRPO training. Specifically, for each given preserving response $\y_i \in \ypre$, we compare token-level likelihoods under the previous and current policies, and quantify their change by
+\begin{align}
+    \Delta_{i,t,k}
+&=
+\ln \pi_{\theta_{\mathrm{old}}}\!\left(y_{i,t,k}\mid \mathbf{x},\y_{i,<t},\ob_{i,<t},\y_{i,t,<k}\right)
+\nn \\ &-
+\ln \pi_{\theta}\!\left(y_{i,t,k}\mid \mathbf{x},\y_{i,<t},\ob_{i,<t},\y_{i,t,<k}\right).
+\nn 
+\end{align}
+where $i$ indexes samples, $t$ actions (turns), and $k$ tokens. Positive $\Delta_{i,t,k}$ indicates a likelihood decrease after the update. These tokens are candidates for regularization.
+\begin{table*}[t]
+\centering
+\small
+\resizebox{\textwidth}{!}{
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{l|ccc|c|cccc|c|c}
+\toprule
+\multirow{2}{*}{\textbf{Methods}} 
+    & \multicolumn{3}{c|}{\textbf{General QA}} 
+    &  \multirow{2}{*}{\textbf{Gen-Avg}}
+    & \multicolumn{4}{c|}{\textbf{Multi-Hop QA}} 
+    & \multirow{2}{*}{\textbf{MH-Avg}}
+    & \multirow{2}{*}{\textbf{Avg}} \\
+ & NQ$^{\dagger}$ & TriviaQA$^{\star}$ & PopQA$^{\star}$ 
+ & 
+ & HotpotQA$^{\dagger}$ & 2Wiki$^{\star}$ & Musique$^{\star}$ & Bamboogle$^{\star}$
+ & 
+ & \\
+\midrule
+\multicolumn{11}{l}{\textbf{Qwen2.5-3b-Base/Instruct}} \\
+\midrule
+Direct Inference$^{\lozenge}$     & 0.106 & 0.288 & 0.108 & 0.167 & 0.149 & 0.244 & 0.020 & 0.024 & 0.109 & 0.134 \\
+% IRCoT$^{\lozenge}$                & 0.111 & 0.312 & 0.200 & 0.208 & 0.164 & 0.171 & 0.067 & 0.240 & 0.161 & 0.181 \\
+Search-o1$^{\lozenge}$            & 0.238 & 0.472 & 0.262 & 0.324 & 0.221 & 0.218 & 0.054 & 0.320 & 0.203 & 0.255 \\
+RAG$^{\lozenge}$                  & 0.348 & 0.544 & 0.387 & 0.426 & 0.255 & 0.226 & 0.047 & 0.080 & 0.152 & 0.270 \\
+% SFT$^{\lozenge}$                  & 0.249 & 0.292 & 0.104 & 0.215 & 0.186 & 0.248 & 0.044 & 0.112 & 0.147 & 0.176 \\
+R1-base$^{\lozenge}$              & 0.226 & 0.455 & 0.173 & 0.285 & 0.201 & 0.268 & 0.055 & 0.224 & 0.187 & 0.229 \\
+R1-instruct$^{\lozenge}$          & 0.210 & 0.449 & 0.171 & 0.277 & 0.208 & 0.275 & 0.060 & 0.192 & 0.184 & 0.224 \\
+Rejection Sampling$^{\lozenge}$   & 0.294 & 0.488 & 0.332 & 0.371 & 0.240 & 0.233 & 0.059 & 0.210 & 0.186 & 0.265 \\
+Search-R1-PPO-Base$^{\lozenge}$   & 0.406 & 0.587 & 0.435 & 0.476 & 0.284 & 0.273 & 0.049 & 0.088 & 0.174 & 0.303 \\
+Search-R1-PPO-Ins$^{\lozenge}$   & 0.341 & 0.545 & 0.378 & 0.421 & 0.324 & 0.319 & 0.103 & 0.264 & 0.253 & 0.325 \\
+ZeroSearch-Base    & 0.430 & 0.616 & 0.414 & 0.487 & 0.338 & 0.346 & 0.130 & 0.139 & 0.238 & 0.345 \\
+ZeroSearch-Ins & 0.414 & 0.574 & 0.448 & 0.479 & 0.274 & 0.300 & 0.098 & 0.111 & 0.196 & 0.317 \\
+% StepSearch-Base$^{\circ}$     & / & / & / & / & 0.329 & 0.339 & 0.181 & 0.328 & 0.294 & / \\
+% StepSearch-Ins$^{\circ}$ & / & / & / & / & 0.345 & 0.320 & 0.174 & 0.344 & 0.296 & / \\
+% StepSearch-Base$^{\circ}$
+% & 0.305 & 0.488 & 0.341 & 0.378
+% & 0.295 & 0.341 & 0.132 & 0.266 & 0.259 & 0.307 \\
+% StepSearch-Ins$^{\circ}$
+% & 0.301 & 0.505 & 0.335 & 0.380
+% & 0.269 & 0.300 & 0.081 & 0.161 & 0.203 & 0.279 \\
+StepSearch 
+& 0.296 & 0.490 & 0.341 & 0.375
+& 0.294 & 0.360 & 0.140 & 0.258 & 0.263 & 0.311 \\
+CriticSearch$^{\triangle}$       & - & - & - & - & 0.414 & 0.409 & 0.180 & 0.368 & 0.343 & - \\
+Tree-GRPO & 0.468 & 0.597 & 0.436 & 0.500 & 0.424 & 0.437 & 0.178 & 0.432 & 0.368 & 0.424\\
+
+
+\midrule
+\multicolumn{11}{c}{Qwen2.5-3b-Base} \\
+\midrule
+% \rowcolor{gray!6} \multicolumn{11}{l}{\textbf{NQ-Only}} \\
+% Search-R1-GRPO       & 0.440 & 0.582 & 0.413 & 0.478 & 0.265 & 0.244 & 0.061 & 0.113 & 0.171 & 0.303 \\
+% +LLD                 & 0.462 & 0.609 & \textbf{0.464} & 0.512 & 0.286 & 0.248 & 0.063 & 0.113 & 0.178 & 0.321 (\textcolor{green}{+5.9\%}) \\
+% +LLDS                & 0.478 & 0.605 & 0.449 & 0.511 & 0.288 & 0.250 & 0.062 & 0.129 & 0.182 & 0.323 (\textcolor{green}{+6.6\%}) \\
+% \rowcolor{gray!6} \multicolumn{11}{l}{\textbf{NQ+hotpot}} \\
+Search-R1-GRPO$^{\lozenge}$ & 0.421 & 0.583 & 0.413 & 0.472 & 0.297 & 0.274 & 0.066 & 0.128 & 0.191 & 0.312 \\
+% +LLDS-400step        & 0.465 & 0.622 & 0.450 & 0.512 & 0.338 & 0.306 & 0.081 & 0.153 & 0.220 & 0.345 (\textcolor{green}{+10.6\%}) \\
+% +LLDS        & 0.479 & \textbf{0.634} & 0.462 & 0.525 & 0.350 & 0.308 & 0.086 & 0.201 & 0.236 & 0.360 \\
+% +LLDS (response 0.2)
+% & 0.480
+% & 0.631
+% & 0.455
+% & 0.522
+% & 0.352
+% & 0.311
+% & 0.087
+% & 0.153
+% & 0.226
+% & 0.353 \\
+% +LLDS-MA-400step     & 0.470 & 0.626 & 0.455 & 0.517 & 0.419 & 0.414 & 0.163 & 0.331 & 0.332 & 0.411 (\textcolor{green}{+31.7\%}) \\
+% +LLDS-MA     & \textbf{0.486} & 0.632 & 0.462 & \textbf{0.527} & \textbf{0.444} & \textbf{0.430} & \textbf{0.183} & \textbf{0.371} & \textbf{0.357} & \textbf{0.430} (\textcolor{green}{+37.8\%}) \\
+% +LLDS-chunk-MA-005     & \textbf{0.477} & 0.633 & 0.465 & & \textbf{0.447} & \textbf{0.426} & \textbf{0.189} & \textbf{0.371} &  & \\
++LLDS      & 0.479 & 0.627 & 0.453 & 0.520 & 0.345 & 0.323 & 0.082 & 0.210 & 0.240 &  0.360  \\
++LLDS-MA        & \textbf{0.483} & \textbf{0.633} & \textbf{0.474} & \textbf{0.530} & \textbf{0.452} & \textbf{0.443} & \textbf{0.197} & \textbf{0.395} & \textbf{0.372} & \textbf{0.440} (\textcolor{green}{+45.2\%})  \\
+
+\midrule
+\multicolumn{11}{c}{Qwen2.5-3b-Ins} \\
+\midrule
+Search-R1-GRPO$^{\lozenge}$    & 0.397 & 0.565 & 0.391 & 0.451 & 0.331 & 0.310 & 0.124 & 0.232 & 0.249 & 0.336 \\
+% \rowcolor{gray!6} \multicolumn{11}{l}{\textbf{NQ-Only}} \\
+% % +LLD                 & 0.469 & 0.609 & 0.457 & 0.512 & 0.291 & 0.250 & 0.057 & 0.097 & 0.174 & 0.319 \\
+% +LLDS                & \textbf{0.490} & 0.610 & 0.450 & \textbf{0.517} & 0.294 & 0.193 & 0.074 & 0.121 & 0.171 & 0.319 \\
+% +LLDS-MA     & 0.464 & 0.616 & 0.458 & 0.513 & 0.363 & 0.320 & 0.131 & 0.315 & 0.282 & 0.381 (\textcolor{green}{+13.4\%}) \\
+% \rowcolor{gray!6} \multicolumn{11}{l}{\textbf{NQ+hotpot}} \\
+% +LLDS-200step        & 0.430 & 0.606 & 0.423 & 0.486 & 0.397 & 0.377 & 0.164 & 0.347 & 0.321 & 0.392 (\textcolor{green}{+16.7\%}) \\
+% +LLDS (response)       & 0.462 & \textbf{0.622} & \textbf{0.460} & 0.515 & \textbf{0.432} & \textbf{0.383} & \textbf{0.180} & \textbf{0.395} & \textbf{0.347} & \textbf{0.419} (\textcolor{green}{+24.7\%}) \\
+% +LLDS-chunk-step600        & 0.461 & \textbf{0.622} & \textbf{0.464} & 0.516 & \textbf{0.441} & \textbf{0.439} & \textbf{0.189} & \textbf{0.435} & 0.376 & \textbf{0.436}  \\
++LLDS       & \textbf{0.462} & \textbf{0.627} & \textbf{0.468} & \textbf{0.519} & \textbf{0.443} & \textbf{0.447} & \textbf{0.197} & \textbf{0.444} & \textbf{0.383} & \textbf{0.441} (\textcolor{green}{+31.3\%})  \\
+\midrule
+Search-R1-GSPO
+& 0.376 
+& 0.561 
+& 0.374 
+& 0.437
+& 0.332 
+& 0.329 
+& 0.098 
+& 0.250
+& 0.252
+& 0.331 \\
+% +LLDS
+% & 0.484 & 0.637 & 0.475 
+% & 0.532
+% & 0.452 & 0.448 & 0.212 & 0.387
+% & 0.375
+% & 0.442(\textcolor{green}{+33.5\%}) \\
++LLDS
+& \textbf{0.489} & \textbf{0.640} & \textbf{0.483} 
+& \textbf{0.537}
+& \textbf{0.466} & \textbf{0.456} & \textbf{0.215} & \textbf{0.403}
+& \textbf{0.385}
+&\textbf{0.451}(\textcolor{green}{+36.3\%}) \\
+\bottomrule
+\end{tabular}
+}
+% \caption{Results on General QA and Multi-Hop QA datasets for \textbf{Qwen2.5-3b-Base/Instruct}. 
+% $^{\lozenge}$ denotes results from~\citep{jin2025search} using NQ+hotpot training. 
+% $^{\dagger}$ denotes open-domain datasets and $^{\star}$ denotes retrieval-augmented datasets.}
+\caption{Results on General QA and Multi-Hop QA datasets for \textbf{Qwen2.5-3b-Base/Instruct}. All results are reported using Exact Match (EM).
+$^{\lozenge}$ denotes results from~\cite{jin2025search}. $^{\triangle}$ denotes results from~\cite{zhang2025criticsearch} that only have multi-hop QA results.
+$^{\dagger}$ denotes in-distribution datasets, while $^{\star}$ denotes out-of-distribution datasets.}
+\label{tab:qa_results_3b}
+\vspace{-3mm}
+\end{table*}
+\\
+\textbf{\ours{}: Action-Level Gating.} To avoid unnecessary penalties on globally improving responses, we introduce an \emph{action-level gating} mechanism: the penalty activates only when the \emph{total} likelihood of an action decreases. The resulting \ours{} loss is defined as:
+\begin{align}
+L_{\mathrm{LLDS}}
+&=
+\frac{1}{\sum_{i=1}^{|\mathcal{Y}_{\mathrm{pre}}|}\sum_{t=0}^{T_i} |\y_{i,t}|}
+\sum_{i=1}^{|\mathcal{Y}_{\mathrm{pre}}|}
+\sum_{t=0}^{T_i}
+\nn \\ & \underbrace{\mathbbm{1}\!\left[
+\sum_{k=1}^{|\y_{i,t}|}
+\Delta_{i,t,k}
+> 0
+\right]}_{\text{Activated only when sum > 0}}
+\sum_{k=1}^{|\y_{i,t}|}
+\underbrace{\max(0,\Delta_{i,t,k})}_{\text{Likelihood-reducing tokens}},
+\label{eq:llds}
+\end{align}
+This structure directly suppresses actions that suffer from LLD. We also introduce token-level and response-level variants in~\cref{sec:variant}, unless stated otherwise, \ours{} refers to the action-level gating. 
+\\
+\textbf{LLDS-MA: Masking Answer Tokens.} To further promote multi-turn reasoning and tool usage, we assign smaller regularization weights to final answer tokens, discouraging premature answer generation. Consequently, \ours{}-MA penalizes likelihood reductions on reasoning and tool-interaction tokens more strongly, while only softly regularizing the answer span $\textcolor{blue}{\y_{i,\rm Ans}}$:
+\begin{align}
+\sum_{k=1}^{|\mathbf{y}_{i,t}|}
+w_{i,t,k}\;
+\max\!\left(
+0,\;
+\Delta_{i,t,k}
+\right), w_{i,t,k}
+=
+\begin{cases}
+\beta, & k \in \textcolor{blue}{\y_{i,\rm Ans}} \\
+1, & \text{otherwise}
+\end{cases}
+\end{align}
+% \begin{align}
+%    \underbrace{ \sum_{y_i\in\mathbf{y}_i /\ \textcolor{blue}{\y_{i,\rm Ans}}}
+%         \max\left(
+%             0,\;
+%             \ln \pi_{\theta_{\rm old}}(y_i|\mathbf{x},\mathbf{y}_{<i})
+%             -
+%             \ln \pi_{\theta}(y_i|\mathbf{y}_{<i})
+%         \right)
+%     }_{\text{Mask Answer Likelihood-reducing tokens}}
+% \end{align}
+%% remove fine
+Finally, we integrate the regularization into the GRPO objective as
+\begin{align}
+    L_{\rm total} = L_{\rm GRPO} + \lambda L_{\rm{LLDS(-MA)}}
+\end{align}
+where $\lambda$ is the regularization weight. We use LLDS as the default variant, and adopt LLDS-MA when the model collapses to single-turn behavior.  The preserving set $\ypre$ includes all responses with non-negative advantages $\hat{A} \ge 0$, ensuring that correct responses ($\hat{A} > 0$) and untrained responses ($\hat{A} = 0$) do not suffer LLD. The effect of $\lambda$ is examined empirically in \cref{fig:strength_nqhot}.

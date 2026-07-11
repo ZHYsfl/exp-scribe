@@ -9,7 +9,7 @@
 set -u
 cd /root/autodl-tmp
 PY=/root/.venv/bin/python
-ITERS="0 10 20 30 40 47"
+ITERS="0 10 20 30 36"
 CONC=32
 NUM=400
 
