@@ -53,10 +53,18 @@ def compute_grpo_loss(
     surrogate2 = clipped_ratio * token_credits
     policy_loss = -_masked_mean(torch.min(surrogate1, surrogate2), rollout_mask)
 
-    # Per-token KL using the standard log-ratio estimator.
-    # KL(π_θ || π_ref) ≈ exp(log_ratio) - log_ratio - 1
+    # Per-token KL using the k1 (log-ratio) estimator. Rollout tokens are
+    # sampled from the policy, so log_ratio = log π_θ − log π_ref is an UNBIASED
+    # estimate of the forward KL:  KL(π_θ‖π_ref) = E_{x~π_θ}[log π_θ − log π_ref].
+    # We use k1 (linear) instead of k3 (exp(δ)−δ−1) deliberately: k3's exp()
+    # detonates when the policy raises a token's prob far above the ref (δ≫0),
+    # which caused the repeated kl_max spikes (205/153/139) that destabilized
+    # training. k1 is linear, so a single extreme token can't blow up the loss -
+    # it stays bounded and is handled by max_grad_norm. Cost: higher per-token
+    # variance, but no explosions. (Our old k3 with this sign was also biased -
+    # E[exp(δ)−δ−1] = χ²−KL, matching KL only for small drift.)
     log_ratio = policy_logprobs - reference_logprobs.detach()
-    kl_per_token = torch.exp(log_ratio) - log_ratio - 1.0
+    kl_per_token = log_ratio
     kl_loss = _masked_mean(kl_per_token, rollout_mask)
 
     loss = policy_loss + beta * kl_loss
@@ -65,9 +73,10 @@ def compute_grpo_loss(
         clip_frac = _masked_mean(
             ((ratio - 1.0).abs() > epsilon).float(), rollout_mask
         )
-        # Per-token drift peaks: a few extreme-ratio tokens can detonate k3's
-        # exp() while the mean KL looks calm. Surface the worst offender so the
-        # trainer can spot impending detonation (max_log_ratio / kl_max).
+        # Per-token drift peaks: with k1 (linear) kl_per_token == log_ratio, so
+        # kl_max is just the largest per-token log-ratio - a direct, non-explosive
+        # drift gauge (k3 used to exp() this into detonation). max_log_ratio is
+        # its absolute-value twin. Watch these for policy-ref divergence.
         mask_bool = rollout_mask.bool()
         masked_lr = log_ratio[mask_bool]
         masked_kl = kl_per_token[mask_bool]
