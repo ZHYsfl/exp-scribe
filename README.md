@@ -651,7 +651,7 @@ the metrics(MULTI-DIMENSIONAL REWARD PREVENTS HACKING)
 
 4. the format correctness. This metric checks:
    (a) the turn contains the expected block types: think, output, tool_call, tool_response, reflect, turn_summary;
-   (b) in the final non-tool step, the message must end with **exactly one <reflect> block followed by exactly one <turn_summary> block** (reflect is the second-to-last block, turn_summary is the last block). Missing either block, or having them in the wrong order, is a format error;
+   (b) in the final non-tool step, the message must end with **exactly one <reflect> block followed by exactly one <turn_summary> block** (reflect is the second-to-last block, turn_summary is the last block). Missing either block, or having them in the wrong order, is a format error. When checking this tail order, **whitespace-only** blocks (parser residuals such as the blank line between `</reflect>` and `<turn_summary>`) are dropped, so mere inter-block spacing does not count as a misplaced block - but a block with real content is never dropped, so a turn that ends with real text after `</turn_summary>` (i.e. its last block is not S) is still penalized. (The filter is purely on content: only bare-text OUTPUT can ever be all-whitespace, since sealed blocks carry their `<tag>...</tag>` text and are never empty after strip.);
    (c) **<reflect> and <turn_summary> appear only in the final step** — any R/S block in a non-final step is a format error;
    (d) **the final non-tool step must contain NO tool_calls**: an assistant message that mixes <reflect>/<turn_summary> with tool_call(s) is invalid, because R+S must be plain text;
    (e) **only the agreed-upon SCRIBE tags are allowed** — any tag other than `<think>`, `<tool_call>`, `<tool_response>`, `<reflect>`, and `<turn_summary>` is invalid. Examples of invalid tags include `<submit>`, `<bash>`, `<action>`, `<plan>`, etc.;
@@ -883,13 +883,42 @@ If online GRPO crashes at `update_weights` with a 404 for `/v1/load_lora_adapter
 Symptom before fix: `404 Not Found` for `.../v1/load_lora_adapter` (missing env)
 or `.../v1/v1/load_lora_adapter` (double `/v1`).
 
-### Submit-only ablation data quality gate
+### Submit-only ablation: parser sealing + data quality gate
 
-For the submit-only SCRIBE ablation, the SFT collection script filters turns on
-the fly: only turns with `turn_reward >= 0.7` and `metric_4 (format) >= 0.8` are
-kept. This removes the common failure mode where the model writes literal SCRIBE
-tag names such as `<reflect>` inside a `<think>` block, which the parser treats
-as nested tags and rejects.
+The submit-only SCRIBE ablation has two layers of defense against the common
+small-model failure where the model *mentions* a literal SCRIBE tag name inside
+reasoning (e.g. writes a bare `<reflect>` or `<turn_summary>` while still inside
+a `<think>` block):
+
+1. **Parser: sealed blocks are opaque containers.** `parse_scribe_blocks`
+   (`Scribe/scribe_gym/parsers.py`) never scans the inner text of a sealed block
+   (THINK / REFLECT / TURN_SUMMARY / TOOL_RESPONSE) for scribe tags. A tag
+   *mentioned* inside any sealed block (e.g.
+   `<reflect>...then <turn_summary>...</turn_summary>...</reflect>`) is sealed
+   away with the block and never leaks as a real block - so the old cascade
+   (bare tag leaks, pairs with a real closing tag, final step collapses to a
+   single OUTPUT block, reflect/turn_summary lost) no longer happens. Only
+   genuine malformed pairs are still flagged: an unclosed tag (no matching
+   `</tag>`) and a `<tool_call>` whose body is not valid JSON both set
+   `saw_malformed`; stray tags in the OUTPUT residual are flagged by the caller.
+   This is the single parser used in both rollout and deploy - vLLM runs in
+   plain-text mode with no `--tool-call-parser` / `--reasoning-parser` - so the
+   sealing behavior is identical at train and inference time.
+
+2. **On-the-fly quality gate.** `data/collect_sft_rollouts_submit_only.py`
+   keeps only turns with `turn_reward >= 0.8` and `metric_4 (format) >= 0.9`
+   (`--min_turn_reward`, default 0.8; `--min_metric_4`, default 0.9). This is a
+   secondary net: the parser fix above already stops the tag-leak cascade; the
+   gate just drops any remaining low-quality turns.
+
+SFT collection config: teacher sampling `--temperature 0.7` (diversity for SFT
+data; the `GymBackedAgent.temperature` param defaults to `None` = provider
+default, so RL rollouts are unaffected), `--concurrency 5` (async
+`asyncio.Semaphore` parallelism with incremental flushed writes), and an
+optional `--seed` for a reproducible shuffled subset of the train split
+(`gsm8k_loader.load_gsm8k(seed=...)` shuffles with
+`df.sample(frac=1.0, random_state=seed)`, keeping original indices so task_ids
+stay stable).
 
 ### Gradient clipping (KL-spike mitigation)
 

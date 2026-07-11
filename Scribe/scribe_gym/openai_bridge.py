@@ -97,6 +97,7 @@ class GymBackedAgent(Agent):
         judge_semaphore: Optional[Any] = None,
         llm_backend: Optional[Any] = None,
         max_tokens: int = 1536,
+        temperature: Optional[float] = None,
     ):
         # SCRIBE mode does not use the base class's tool-error retry prompt.
         # Tool error content is already present in the tool response messages;
@@ -117,6 +118,9 @@ class GymBackedAgent(Agent):
         self.token_counter = token_counter
         # Max tokens for each LLM call (configurable to bound output/context cost).
         self.max_tokens = max_tokens
+        # Actor sampling temperature (None = omit -> provider default). Set to
+        # 0.0 for deterministic SFT teacher rollouts; leave None for RL rollout.
+        self.temperature = temperature
         # LLM-as-judge for metrics 7-10. Resolution order for the judge endpoint:
         #   1. explicit JUDGE_* env vars (override)
         #   2. LLM_* env vars (the shared .env LLM config - e.g. deepseek-chat)
@@ -214,6 +218,7 @@ class GymBackedAgent(Agent):
             response = await self._call_llm(
                 model=self.config.model,
                 messages=msgs,
+                temperature=self.temperature,
             )
             choice = response.choices[0]
             print(choice.message.content or "")

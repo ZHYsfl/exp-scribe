@@ -47,18 +47,14 @@ def _find_next_valid_pair(
 
         content = response[content_start:end]
 
-        # SCRIBE blocks are non-nesting: a THINK/REFLECT/TURN_SUMMARY/
-        # TOOL_RESPONSE block's inner text must not contain another scribe tag.
-        # (A model may *mention* a tag in free OUTPUT text, but never inside
-        # these wrapped blocks.) Reject nested tags as malformed.
-        if block_type in (
-            ScribeBlockType.THINK,
-            ScribeBlockType.REFLECT,
-            ScribeBlockType.TURN_SUMMARY,
-            ScribeBlockType.TOOL_RESPONSE,
-        ) and _contains_known_tag(content):
-            saw_malformed = True
-            continue
+        # Sealed SCRIBE blocks (THINK / REFLECT / TURN_SUMMARY / TOOL_RESPONSE)
+        # are opaque containers: their inner text is never scanned for scribe
+        # tags. A model may *mention* a tag name inside reasoning/reflection
+        # (e.g. "<reflect>...then <turn_summary>...</turn_summary>...</reflect>");
+        # we seal the whole block so such mentions never leak as real blocks.
+        # (Malformed pairs are still caught below: unclosed tags and bad
+        # TOOL_CALL JSON set saw_malformed; stray tags in OUTPUT residual are
+        # flagged by the caller.)
 
         if block_type == ScribeBlockType.TOOL_CALL:
             try:

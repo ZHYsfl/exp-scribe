@@ -78,8 +78,9 @@ async def collect_one(
     max_steps: int = 5,
     max_turns: int = 3,
     enable_judge: bool = False,
-    min_turn_reward: float = 0.7,
-    min_metric_4: float = 0.8,
+    min_turn_reward: float = 0.8,
+    min_metric_4: float = 0.9,
+    temperature: float = 0.7,
 ) -> List[Dict[str, Any]]:
     api_key = os.getenv("LLM_API_KEY", "")
     model = os.getenv("LLM_MODEL", "deepseek-v4-pro")
@@ -105,6 +106,7 @@ async def collect_one(
         config=cfg, env=env, history_manager=hm, debug=False,
         enable_judge=enable_judge,
         llm_backend=backend,
+        temperature=temperature,
     )
     runner = ScribeRunner(
         agent=agent,
@@ -147,10 +149,11 @@ async def main(
     max_turns: int = 3,
     output_path: Optional[str] = None,
     enable_judge: bool = False,
-    min_turn_reward: float = 0.7,
+    min_turn_reward: float = 0.8,
     min_metric_4: float = 0.9,
     seed: Optional[int] = None,
     concurrency: int = 5,
+    temperature: float = 0.7,
 ):
     items = load_gsm8k("train", "main", limit=num_samples, seed=seed)
     if output_path is None:
@@ -160,6 +163,7 @@ async def main(
     print(f"Teacher model: {os.getenv('LLM_MODEL', 'deepseek-v4-pro')}")
     print(f"LLM-as-judge enabled: {enable_judge}")
     print(f"Quality gate: reward>={min_turn_reward}, m4>={min_metric_4}")
+    print(f"Temperature: {temperature}")
     print(f"Seed: {seed}")
     print(f"Concurrency: {concurrency}")
     print(f"Output: {output_path}")
@@ -182,6 +186,7 @@ async def main(
                         enable_judge=enable_judge,
                         min_turn_reward=min_turn_reward,
                         min_metric_4=min_metric_4,
+                        temperature=temperature,
                     )
                 except Exception as exc:
                     print(f"  [{idx}/{len(items)}] {item['task_id']}: ERROR: {exc}")
@@ -220,7 +225,7 @@ if __name__ == "__main__":
                         help="Output JSONL path (default: <repo-root>/data/gsm8k_sft_steps_submit_only.jsonl).")
     parser.add_argument("--enable_judge", action="store_true",
                         help="Enable LLM-as-judge for metrics 7-10 (extra API calls).")
-    parser.add_argument("--min_turn_reward", type=float, default=0.7,
+    parser.add_argument("--min_turn_reward", type=float, default=0.8,
                         help="Minimum turn reward for a turn to be kept in SFT data.")
     parser.add_argument("--min_metric_4", type=float, default=0.9,
                         help="Minimum metric_4 (format) score for a turn to be kept.")
@@ -228,6 +233,8 @@ if __name__ == "__main__":
                         help="Random seed for sampling a reproducible subset of the train split.")
     parser.add_argument("--concurrency", type=int, default=5,
                         help="Number of GSM8K samples to collect in parallel (async).")
+    parser.add_argument("--temperature", type=float, default=0.7,
+                        help="Teacher sampling temperature (0.7 = diverse SFT data).")
     args = parser.parse_args()
 
     asyncio.run(main(
@@ -240,4 +247,5 @@ if __name__ == "__main__":
         min_metric_4=args.min_metric_4,
         seed=args.seed,
         concurrency=args.concurrency,
+        temperature=args.temperature,
     ))

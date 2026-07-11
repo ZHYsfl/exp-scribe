@@ -366,7 +366,14 @@ def metric_4(turn: TurnRecord, oc: TurnOutcome, cfg: TurnRewardConfig) -> float:
 
     final = steps[-1]
     final_out = final.output_blocks
-    last_two = [b.type for b in final_out[-2:]] if len(final_out) >= 2 else []
+    # Ignore whitespace-only blocks (parser residuals such as the blank line
+    # between </reflect> and <turn_summary>) when checking the final-step tail
+    # order, so mere inter-block spacing does not count as a misplaced block.
+    # In practice only OUTPUT blocks can be all-whitespace: sealed blocks
+    # (think/reflect/turn_summary/...) carry their "<tag>...</tag>" text as
+    # content, which is never empty after strip.
+    tail = [b for b in final_out if b.content.strip()]
+    last_two = [b.type for b in tail[-2:]] if len(tail) >= 2 else []
     if last_two != [_R, _S]:
         pen += cfg.fmt_bad_order
 
