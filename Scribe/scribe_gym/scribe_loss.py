@@ -37,7 +37,7 @@ import torch
 import torch.nn.functional as F
 
 
-def compute_grpo_loss(
+def compute_scribe_loss(
     policy_logprobs: torch.Tensor,
     old_logprobs: torch.Tensor,
     token_credits: torch.Tensor,
@@ -141,4 +141,4 @@ def gather_logprobs(
     return padded
 
 
-__all__ = ["compute_grpo_loss", "gather_logprobs"]
+__all__ = ["compute_scribe_loss", "gather_logprobs"]

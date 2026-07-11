@@ -55,7 +55,7 @@ from Scribe.scribe_gym import (
     ScribeRunner,
     VLLMBackend,
 )
-from Scribe.scribe_gym.grpo_loss import compute_grpo_loss, gather_logprobs
+from Scribe.scribe_gym.scribe_loss import compute_scribe_loss, gather_logprobs
 from Scribe.scribe_gym.rl_utils import (
     build_tree_node_samples,
     compute_group_advantages,
@@ -632,7 +632,7 @@ def do_scribe_update(
 ) -> Dict[str, float]:
     """Run one epoch of GSPO-token updates over the sampled tree nodes.
 
-    ref_model is now UNUSED (KL to frozen SFT was removed - see grpo_loss). It
+    ref_model is now UNUSED (KL to frozen SFT was removed - see scribe_loss). It
     is kept in the signature to avoid churning the call site / load_models; it
     can be dropped to free ~one model copy of VRAM as a follow-up.
     """
@@ -682,7 +682,7 @@ def do_scribe_update(
             policy, input_ids, attention_mask, rollout_mask
         )
 
-        loss, metrics = compute_grpo_loss(
+        loss, metrics = compute_scribe_loss(
             policy_logprobs,
             old_logprobs,
             token_credits,

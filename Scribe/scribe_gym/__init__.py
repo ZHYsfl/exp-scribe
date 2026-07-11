@@ -1,6 +1,6 @@
 from .base_env import ScribeEnv, ThreadPoolScribeMultiEnv
 from .compressor import Compressor, LLMSummarizerCompressor
-from .grpo_loss import compute_grpo_loss, gather_logprobs
+from .scribe_loss import compute_scribe_loss, gather_logprobs
 from .helpers import (
     build_tool_messages,
     extract_tool_calls,
@@ -66,7 +66,7 @@ __all__ = [
     "build_structured_judge",
     "build_tool_messages",
     "build_training_samples",
-    "compute_grpo_loss",
+    "compute_scribe_loss",
     "compute_group_advantages",
     "compute_loss_mask",
     "compute_trajectory_reward",
