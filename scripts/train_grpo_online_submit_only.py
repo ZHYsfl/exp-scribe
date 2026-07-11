@@ -181,6 +181,23 @@ def parse_args() -> argparse.Namespace:
         help="Trajectory reward decay factor",
     )
     parser.add_argument(
+        "--dynamic_sampling_attempts",
+        type=int,
+        default=3,
+        help="Dynamic Sampling (DAPO): for groups whose trajectory-reward std "
+             "is below --dynamic_sampling_min_std (all-correct / all-wrong -> "
+             "weak/zero advantage), resample up to this many times and keep "
+             "the group with the largest std. 0 disables.",
+    )
+    parser.add_argument(
+        "--dynamic_sampling_min_std",
+        type=float,
+        default=0.05,
+        help="Dynamic Sampling: a group with sample-std below this is treated "
+             "as low-signal and triggers resampling. w1=0.60 dominates the "
+             "reward, so a mixed group's std is well above this.",
+    )
+    parser.add_argument(
         "--max_steps_per_turn",
         type=int,
         default=5,
@@ -715,19 +732,55 @@ def main():
         )
 
         # 3. Compute rewards and advantages per task group.
+        # Dynamic Sampling (DAPO): groups whose trajectory-reward std is too
+        # small are all-correct or all-wrong -> advantage ~0 -> zero/weak
+        # gradient. Resample such groups up to --dynamic_sampling_attempts
+        # times and keep the group with the largest std (strongest signal).
+        # w1=0.60 dominates the reward, so a mixed (some-correct / some-wrong)
+        # group has a much larger std than a uniform one.
         groups: Dict[str, List[List[TurnRecord]]] = defaultdict(list)
         for item, turns in zip(
             [it for it in items for _ in range(args.group_size)], trajectories
         ):
             groups[item["task_id"]].append(turns)
 
+        ds_resamples = 0
         all_samples: List[Dict[str, Any]] = []
         all_rewards: List[float] = []
+        # Accumulate the actually-trained-on trajectories here. Must use the
+        # local `task_turns` (which may be rebound to a resampled group below),
+        # NOT `groups.values()` -- that dict still holds the original
+        # pre-resampling rollouts because `task_turns = new_turns` only rebinds
+        # the local name and does not mutate the dict.
+        final_trajectories: List[List[TurnRecord]] = []
         for task_id, task_turns in groups.items():
+            item = next(it for it in items if it["task_id"] == task_id)
             rewards = [
                 compute_trajectory_reward(turns, decay=args.decay)
                 for turns in task_turns
             ]
+            std = float(np.std(rewards, ddof=1)) if len(rewards) > 1 else 0.0
+            for _ in range(args.dynamic_sampling_attempts):
+                if std >= args.dynamic_sampling_min_std:
+                    break
+                new_turns = loop.run_until_complete(
+                    collect_group_rollouts(
+                        backend, [item], args.group_size, tokenizer, args,
+                        max_concurrent=args.max_concurrent,
+                    )
+                )
+                new_rewards = [
+                    compute_trajectory_reward(t, decay=args.decay)
+                    for t in new_turns
+                ]
+                new_std = (
+                    float(np.std(new_rewards, ddof=1))
+                    if len(new_rewards) > 1
+                    else 0.0
+                )
+                ds_resamples += 1
+                if new_std > std:
+                    task_turns, rewards, std = new_turns, new_rewards, new_std
             all_rewards.extend(rewards)
             advantages = compute_group_advantages(rewards)
             for turns, adv in zip(task_turns, advantages):
@@ -735,6 +788,10 @@ def main():
                     turns, adv, tokenizer, max_seq_length=args.max_seq_length
                 )
                 all_samples.extend(samples)
+            final_trajectories.extend(task_turns)
+
+        # Reflects what was actually trained on (post-resampling).
+        trajectories = final_trajectories
 
         mean_reward = float(np.mean(all_rewards)) if all_rewards else 0.0
         std_reward = float(np.std(all_rewards)) if all_rewards else 0.0
@@ -763,6 +820,7 @@ def main():
             "std_reward": std_reward,
             "n_samples": len(all_samples),
             "n_trajectories": len(trajectories),
+            "ds_resamples": ds_resamples,
             **agg,
             "grpo": {},
         }
