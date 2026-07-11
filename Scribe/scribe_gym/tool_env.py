@@ -75,7 +75,11 @@ class LinuxWorkspaceEnv(ToolCallingScribeEnv):
 
     def _submit(self, answer: str) -> str:
         self._submitted = True
-        self._answer = answer
+        # LLM tool-call arguments are parsed as native JSON types, so `answer`
+        # may arrive as int/float (e.g. submit(answer=4)) even though the schema
+        # declares "string". Coerce to str so downstream .strip()/comparisons
+        # and info-dict serialization never crash on a non-str value.
+        self._answer = answer if isinstance(answer, str) else str(answer)
         self._submit_count += 1
         if self._submit_count > 1:
             return (
@@ -129,7 +133,7 @@ class LinuxWorkspaceEnv(ToolCallingScribeEnv):
         if self.right_answer is None:
             base = 1.0
         else:
-            base = 1.0 if self._answer.strip() == self.right_answer.strip() else 0.0
+            base = 1.0 if str(self._answer).strip() == str(self.right_answer).strip() else 0.0
         # Penalize repeated submits within the same turn: each extra submit
         # beyond the first subtracts `submit_penalty`, clamped to >= 0.
         extra_submits = max(0, self._submit_count - 1)
