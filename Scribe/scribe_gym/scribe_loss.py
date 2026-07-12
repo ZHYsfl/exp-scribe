@@ -98,6 +98,25 @@ def compute_scribe_loss(
     # KL removed (DAPO): no beta * KL(pi_theta || pi_ref) term.
     loss = policy_loss
 
+    # LLDS likelihood-preserving regularizer (LLD Suppression). Activates only
+    # when a step's TOTAL likelihood decreased (action-level gate, s_step<1) and
+    # only on non-negative-advantage steps (preserve = token_credits>=0, i.e.
+    # correct/untrained nodes - the LLD preserving set), penalizing only the
+    # tokens whose own likelihood dropped (token-level max(0, Delta)).
+    # Delta = log pi_old - log pi = -log_ratio > 0 means the token's likelihood
+    # fell. Minimizing L_LLDS pushes those tokens' logprob back up. Reuses
+    # old_logprobs (already computed for the GSPO ratio) - no extra forward.
+    llds_loss = policy_loss.new_zeros(())
+    if llds_lambda > 0.0:
+        delta = -log_ratio  # log pi_old - log pi, >0 when likelihood dropped
+        step_gated = (s_step < 1.0).float().unsqueeze(1)  # step's total ll dropped
+        preserve = (token_credits >= 0.0).float()  # advantage >= 0 (per node)
+        token_penalty = torch.clamp(delta, min=0.0)  # only decreasing tokens
+        llds_loss = _masked_mean(
+            step_gated * preserve * token_penalty, rollout_mask
+        )
+        loss = policy_loss + llds_lambda * llds_loss
+
     with torch.no_grad():
         # A step is clipped when its s_step leaves [1-eps_low, 1+eps_high].
         step_clipped = (
@@ -113,6 +132,7 @@ def compute_scribe_loss(
             "scribe/mean_step_ratio": s_step.mean().item(),
             "scribe/max_step_ratio": s_step.max().item(),
             "scribe/min_step_ratio": s_step.min().item(),
+            "scribe/llds": llds_loss.item(),
         }
 
     return loss, metrics

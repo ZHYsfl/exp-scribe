@@ -1,12 +1,15 @@
 #!/bin/bash
-# Run submit-only online RL (tree rollout + GSPO step-ratio).
+# Run submit-only online RL (tree rollout + GSPO step-ratio + DAPO-pure +
+# Dynamic Sampling + Clip-Higher + Overlong Filtering + LLDS).
 #
 # Context-budget match with scripts/start_vllm_submit_only.sh:
 # vLLM is started with --max-model-len 16384, so we keep --max_tokens at 768
 # to leave headroom for 3 turns * 5 steps of accumulated history.
 #
 # LR schedule: linear warmup (10% of iters) then cosine anneal down to 10% of
-# peak. Tree rollout: branch_n 6 (GRPO group size), branch_dropout 0.5.
+# peak. Tree rollout: branch_n 6 (GRPO group size), branch_dropout 0.5. DS
+# oversamples 2x tasks at turn-0, keeps the 6 most-mixed. Clip-Higher eps_low
+# 0.2 / eps_high 0.4. LLDS lambda 1.0 (likelihood-preserving regularizer).
 #
 # LLM-as-judge (metrics 7-10): --enable_judge resolves the judge endpoint from
 # Scribe/.env (LLM_MODEL/LLM_BASE_URL/LLM_API_KEY, e.g. deepseek-chat). No
@@ -19,13 +22,13 @@ cd "$(dirname "$0")/.."
 
 /root/.venv/bin/python scripts/train_grpo_online_submit_only.py \
   --base_model /root/autodl-tmp/qwen2.5-1.5b-instruct \
-  --sft_lora_path /root/autodl-tmp/outputs/qwen2.5-1.5b-sft-gsm8k-submit-only-100/final_lora \
-  --output_dir outputs/qwen2.5-1.5b-grpo-gsm8k-submit-only-100 \
+  --sft_lora_path /root/autodl-tmp/outputs/qwen2.5-1.5b-sft-gsm8k-submit-only-r64/final_lora \
+  --output_dir outputs/qwen2.5-1.5b-tree-gspo-gsm8k-submit-only \
   --data_dir data/gsm8k --split train --num_iterations 50 --batch_size 4 \
-  --branch_n 6 --branch_dropout 0.5 \
+  --branch_n 6 --branch_dropout 0.5 --ds_oversample 2 \
   --num_inner_epochs 1 --per_device_train_batch_size 1 --gradient_accumulation_steps 1 \
   --learning_rate 5e-6 --warmup_ratio 0.1 --lr_min_ratio 0.1 \
-  --clip_epsilon 0.2 --max_grad_norm 1.0 \
+  --clip_epsilon 0.2 --clip_epsilon_high 0.4 --max_grad_norm 1.0 --llds_lambda 1.0 \
   --max_steps_per_turn 5 --max_turns 3 --reward_threshold 1.0 \
   --max_tokens 768 --max_seq_length 16384 --max_concurrent 8 --save_steps 1 \
   --enable_judge --judge_max_concurrent 5

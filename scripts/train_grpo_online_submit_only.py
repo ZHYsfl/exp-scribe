@@ -194,6 +194,15 @@ def parse_args() -> argparse.Namespace:
              "rollout cost. Passing nodes are always leaves.",
     )
     parser.add_argument(
+        "--ds_oversample",
+        type=float,
+        default=2.0,
+        help="Dynamic Sampling (DAPO): oversample this many x batch_size tasks "
+             "at turn-0, then keep only batch_size tasks whose turn-0 group is "
+             "most MIXED (highest turn_reward std). 1.0 disables (all-pass / "
+             "all-fail turn-0 groups have ~0 advantage -> zero gradient).",
+    )
+    parser.add_argument(
         "--max_steps_per_turn",
         type=int,
         default=5,
@@ -508,14 +517,12 @@ async def run_one_turn(
                 result = runner._evaluate_turn(last)
                 if result is not None:
                     await runner._finalize_current_turn(result)
-                    info = (last.get("info") or {}) if isinstance(last, dict) else {}
-                    answer = info.get("answer")
-                    right_answer = info.get("right_answer")
-                    passed = bool(
-                        answer is not None
-                        and right_answer is not None
-                        and str(answer).strip() == str(right_answer).strip()
-                    )
+                    # pass = the run would stop here = (answer correct) OR
+                    # (threshold mode AND reward >= reward_threshold). Reuse the
+                    # runner's own _should_stop_run verdict (result.stop_run)
+                    # instead of re-checking answer-only - that would miss the
+                    # reward>=threshold branch of the OR.
+                    passed = result.stop_run
                     # Turn hit max_steps (looping) - Overlong Filtering flags it.
                     if isinstance(last, dict):
                         truncated = bool(last.get("truncated", False))
@@ -550,29 +557,33 @@ async def collect_tree_rollouts(
     tokenizer: Any,
     args: argparse.Namespace,
     max_concurrent: int = 8,
-) -> List[Dict[str, Any]]:
-    """N-ary tree rollout per task (replaces flat collect_group_rollouts).
+) -> tuple:
+    """N-ary tree rollout per task with Dynamic Sampling (turn-0 task filter).
 
-    For each task: sample n turn-0 attempts (siblings from the root -> one GRPO
-    group). A passing node (correct answer) is a leaf. A non-passing node
-    branches n children with probability ``dropout`` (else becomes a failure
-    leaf); its n children share the parent's state -> a valid GRPO group. Depth
-    is capped by max_turns. Cost is self-limiting: as the model improves, more
-    nodes pass early and the tree shrinks.
+    Phase 1 - roll turn-0 (n siblings) for every item in ``items``. The main
+    loop oversamples: len(items) = batch_size * ds_oversample.
+    Phase 2 - DAPO Dynamic Sampling: keep only ``batch_size`` tasks whose
+    turn-0 group is most MIXED (highest turn_reward std). All-pass / all-fail
+    turn-0 groups have ~0 advantage -> zero gradient; filtering them keeps
+    every expanded task's turn-0 group informative. If fewer than batch_size
+    are mixed, the best-available are kept (batch stays full).
+    Phase 3 - expand the n-ary tree (branch non-passing nodes with prob
+    --branch_dropout, depth capped by max_turns) only for the kept tasks.
 
-    Returns a flat list of nodes; each carries turn_record, depth (1 = turn-0),
-    group_id (siblings share group_id), passed, task_id.
+    Returns (nodes, n_ds_dropped). Each node carries turn_record, depth
+    (1=turn-0), group_id (siblings share it), passed, truncated, task_id.
     """
     n = args.branch_n
     p = args.branch_dropout
     max_depth = args.max_turns  # turn-0..turn-(max_turns-1) => depth 1..max_turns
+    target = args.batch_size
     semaphore = asyncio.Semaphore(max_concurrent)
 
-    nodes: List[Dict[str, Any]] = []
+    # Phase 1: turn-0 for ALL items (the oversample pool).
+    task_turn0: List[tuple] = []  # (item, level1_nodes, std)
     group_id = 0
     for item in items:
         task_id = item["task_id"]
-        # Level 1 (turn-0): n attempts from the root, one group.
         gid = group_id
         group_id += 1
         level1 = await asyncio.gather(
@@ -581,15 +592,31 @@ async def collect_tree_rollouts(
                 for _ in range(n)
             ]
         )
-        frontier: List[Dict[str, Any]] = []
         for nd in level1:
             nd["depth"] = 1
             nd["group_id"] = gid
             nd["task_id"] = task_id
-            nodes.append(nd)
-            if not nd["passed"]:
-                frontier.append(nd)
+        rewards = [nd["record"].reward for nd in level1 if nd["record"] is not None]
+        std = float(np.std(rewards, ddof=1)) if len(rewards) > 1 else 0.0
+        task_turn0.append((item, level1, std))
 
+    # Phase 2: DS filter - keep `target` tasks with the highest turn-0 std.
+    if args.ds_oversample > 1.0 and len(task_turn0) > target:
+        task_turn0.sort(key=lambda x: x[2], reverse=True)
+        n_ds_dropped = len(task_turn0) - target
+        kept = task_turn0[:target]
+    else:
+        n_ds_dropped = 0
+        kept = task_turn0
+
+    nodes: List[Dict[str, Any]] = []
+    for _, level1, _ in kept:
+        nodes.extend(level1)
+
+    # Phase 3: expand deeper turns for kept tasks only.
+    for item, level1, _ in kept:
+        task_id = item["task_id"]
+        frontier: List[Dict[str, Any]] = [nd for nd in level1 if not nd["passed"]]
         depth = 1
         while frontier and depth < max_depth:
             depth += 1
@@ -622,7 +649,8 @@ async def collect_tree_rollouts(
                 if not nd["passed"]:
                     next_frontier.append(nd)
             frontier = next_frontier
-    return nodes
+
+    return nodes, n_ds_dropped
 
 
 def collate_fn(batch: List[Dict[str, Any]], pad_token_id: int) -> Dict[str, torch.Tensor]:
@@ -852,17 +880,20 @@ def main():
         print(f"Iteration {iteration}/{args.num_iterations}")
         print(f"{'='*60}")
 
-        # 1. Sample task batch.
-        items = random.sample(
-            train_items, min(args.batch_size, len(train_items))
+        # 1. Sample task batch (oversample for Dynamic Sampling: roll turn-0 for
+        # batch_size * ds_oversample tasks, keep the batch_size most-mixed).
+        n_sample = min(
+            int(args.batch_size * args.ds_oversample), len(train_items)
         )
+        items = random.sample(train_items, n_sample)
 
         # 2. N-ary tree rollout: siblings share the parent state, so each set
         # of n siblings is a valid GRPO group (same input). A passing node
         # (correct answer) is a leaf; a non-passing node branches n children
         # with probability --branch_dropout; depth is capped by max_turns.
+        # Dynamic Sampling filters turn-0 to the most-mixed tasks.
         print("Collecting tree rollouts...")
-        nodes = loop.run_until_complete(
+        nodes, n_ds_dropped = loop.run_until_complete(
             collect_tree_rollouts(
                 backend, items, tokenizer, args, max_concurrent=args.max_concurrent
             )
@@ -914,6 +945,7 @@ def main():
             "n_groups": len(groups),
             "n_pass": n_pass,
             "n_filtered": n_filtered,
+            "n_ds_dropped": n_ds_dropped,
             "max_depth": max((nd["depth"] for nd in nodes), default=0),
         }
 
