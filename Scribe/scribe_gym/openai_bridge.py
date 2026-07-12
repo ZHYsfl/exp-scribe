@@ -177,7 +177,8 @@ class GymBackedAgent(Agent):
         shut down.
         """
         if self._judge_client is not None:
-            await self._judge_client.aclose()
+            # openai>=2 renamed AsyncOpenAI.aclose() -> close() (both async).
+            await self._judge_client.close()
             self._judge_client = None
 
     def _get_tools(self) -> List[Dict[str, Any]]:
