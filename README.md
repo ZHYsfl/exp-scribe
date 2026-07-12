@@ -889,6 +889,73 @@ So the chain is: **turn_reward -> (sibling group) -> node_advantage -> (x step_r
 
 A turn truncated by the step limit (`max_steps_per_turn`, likely looping) is flagged `truncated`; its training samples are SKIPPED (loss masked). Its `turn_reward` still shapes its siblings' advantage (so it still counts in the group baseline), but its own (low-quality, cut-off) tokens are not trained on. This replaces the old punitive-truncation reward noise (DAPO: a sound long reasoning should not be penalized just for length). On GSM8K truncation is rare (roughly looping); it matters more in coding/long-generation settings.
 
+### Mathematical formulation
+
+**Notation.** Let $x$ be a task. The rollout is an n-ary tree: the root is $x$; each node $i$ is one turn attempt producing a turn output $y_i$ (a sequence of rollout tokens) and a 16-metric turn reward $r_i \in [0,1]$. The $n$ children of the same parent $p$ share the parent's state (identical input) and form a sibling group $G_p$. Let $D$ = `max_turns`, $n$ = `branch_n`, $\rho$ = `ds_oversample`, $p_d$ = `branch_dropout`, $\tau$ = `reward_threshold`, $B$ = `batch_size`. $\pi_\theta$ is the policy; $\theta_{\mathrm{old}}$ is the policy at the start of the iteration (NOT a frozen SFT reference). A node **passes** (becomes a leaf) when
+
+$$\mathrm{pass}(i) \;=\; \big(\mathrm{answer}_i = \mathrm{answer}^{*}\big) \;\lor\; \big(r_i \geq \tau\big).$$
+
+A non-passing node branches $n$ children with probability $p_d$; otherwise it is a failure leaf. Depth is capped at $D$.
+
+**1. Node advantage (sibling-group GRPO, no trajectory level).** For each sibling group $G_p$,
+
+$$\hat{A}_i \;=\; \frac{r_i - \mu_p}{\sigma_p + \epsilon}, \qquad \mu_p = \frac{1}{|G_p|}\sum_{j\in G_p} r_j, \qquad \sigma_p = \sqrt{\tfrac{1}{|G_p|-1}\sum_{j\in G_p}(r_j-\mu_p)^2}.$$
+
+There is no trajectory-level reward and no division by num_turns: each node is an independent short-horizon GRPO problem compared only against its siblings (same input state). Uniform groups ($\sigma_p \approx 0$) yield $\hat{A}_i = 0$ (zero gradient).
+
+**2. Dynamic Sampling (turn-0).** Oversample $M = \lceil \rho B \rceil$ tasks at turn-0; for each, compute $\sigma_p$ of its turn-0 group; keep the $B$ tasks with the largest $\sigma_p$ (most mixed). This filters all-pass / all-fail (zero-advantage) groups at turn-0 and keeps the batch on the model's current learning frontier.
+
+**3. Step-role weighting + DAPO-pure token advantage.** A node is expanded into steps $\{s_k\}$ (one step = one LLM call). The per-token advantage is
+
+$$a_{i,t} \;=\; \hat{A}_i \cdot w_{k(t)}, \qquad w_k = \begin{cases} 0.35 & \text{submit step (last step with a submit tool call)} \\ 0.35 & \text{summary step (last non-tool step with } \langle\text{reflect}\rangle \text{ immediately followed by } \langle\text{turn\_summary}\rangle\text{)} \\ 0.30\,/\,|\mathcal{O}_i| & \text{ordinary step} \end{cases}$$
+
+where $k(t)$ is the step containing token $t$ and $\mathcal{O}_i$ is the set of ordinary steps of node $i$. A missing role's $0.35$ is **dropped, not redistributed** (a degenerate turn with no submit/summary gets only the $0.30$ ordinary pool, so a format failure does not hammer reasoning tokens). The advantage is uniform within a step and is NOT divided by the step's token count - the $1/\sum|y_i|$ in the loss (step 5) is the sole normalization (DAPO-pure; dividing here would double-normalize and cancel the role weighting in the node's total gradient).
+
+**4. GSPO step-level importance ratio.** For a step with rollout tokens $y_i = (y_{i,1},\dots,y_{i,|y_i|})$,
+
+$$s_i \;=\; \exp\!\left( \frac{1}{|y_i|} \sum_{t=1}^{|y_i|} \log \frac{\pi_\theta(y_{i,t}\mid \cdot)}{\pi_{\theta_{\mathrm{old}}}(y_{i,t}\mid \cdot)} \right),$$
+
+the length-normalized geometric mean of the per-token ratios (one scalar per step, shared by all its tokens - GSPO's equal token weighting, which eliminates GRPO's ill-posed per-token ratio noise). Clipped at the step level with decoupled bounds (Clip-Higher): $\mathrm{clip}(s_i,\, 1-\varepsilon_l,\, 1+\varepsilon_h)$.
+
+**5. Objective (GSPO-token / DAPO, no KL).** Let $\mathcal{T}$ be the set of truncated nodes (Overlong Filtering). The policy loss (minimized) is
+
+$$\mathcal{L}_{\mathrm{policy}}(\theta) \;=\; -\,\frac{1}{\sum_{i\notin\mathcal{T}} |y_i|} \sum_{i\notin\mathcal{T}} \sum_{t=1}^{|y_i|} \min\!\Big( s_i\, a_{i,t},\;\; \mathrm{clip}(s_i,\,1-\varepsilon_l,\,1+\varepsilon_h)\, a_{i,t} \Big),$$
+
+and the total loss adds the LLDS regularizer:
+
+$$\mathcal{L}(\theta) \;=\; \mathcal{L}_{\mathrm{policy}}(\theta) \;+\; \lambda\, \mathcal{L}_{\mathrm{LLDS}}(\theta).$$
+
+There is no $\beta\cdot\mathrm{KL}(\pi_\theta\|\pi_{\mathrm{ref}})$ term: a reasoning policy is meant to diverge from the SFT base, and anchoring the ratio to $\theta_{\mathrm{old}}$ (not a frozen ref) makes the clip a per-iteration trust region rather than a cumulative SFT ceiling.
+
+**6. LLDS regularizer (likelihood-preserving).** Let $\Delta_{i,t} = \log\pi_{\theta_{\mathrm{old}}}(y_{i,t}) - \log\pi_\theta(y_{i,t})$ ($\Delta_{i,t}>0$ means token $t$'s likelihood dropped). Then
+
+$$\mathcal{L}_{\mathrm{LLDS}} \;=\; \frac{1}{\sum_{i\notin\mathcal{T}} |y_i|} \sum_{i\notin\mathcal{T}} \sum_{t} \underbrace{\mathbb{1}[s_i < 1]}_{\text{action gate}} \cdot \underbrace{\mathbb{1}[a_{i,t} \geq 0]}_{\text{preserve } \hat A\geq 0} \cdot \underbrace{\max(0,\, \Delta_{i,t})}_{\text{token-level}}.$$
+
+Three selectivity layers: (a) the step's total likelihood must have dropped ($s_i<1$); (b) only non-negative-advantage (correct/untrained) steps are protected; (c) only the tokens that actually dropped. Reuses $\theta_{\mathrm{old}}$ (no extra forward pass). Prevents LLD (likelihood collapse of correct responses) - the tree already removes LLD's main cause (trajectory over-propagation), LLDS insures the residual OOD-feedback cause.
+
+**Algorithm (one iteration).**
+
+```
+for each task x:                                          # Phase 1: turn-0
+    sample n turn-0 attempts {y_i} from root  -> group G_root
+oversample M = ceil(rho*B) tasks; keep B with largest turn-0 sigma_p   # Phase 2: DS
+for each kept task:                                       # Phase 3: expand tree
+    frontier <- non-passing turn-0 nodes
+    while frontier and depth < D:
+        for each node in frontier: with prob p_d branch n children (group G_node)
+        frontier <- non-passing children
+compute r_i (16-metric) for every node
+A_i <- (r_i - mean(G_p)) / std(G_p)          # per sibling group (step 1)
+theta_old <- theta; precompute old logprobs
+for inner epoch:
+    for each minibatch of steps:
+        s_i <- exp(mean_t log[pi_theta/pi_old])             # GSPO step ratio (step 4)
+        a_{i,t} <- A_i * w_{k(t)}                            # step-role + DAPO-pure (step 3)
+        L <- -mean(min(s_i*a, clip(s_i)*a)) + lambda*L_LLDS # objective (steps 5-6)
+        L.backward(); clip_grad_norm; optimizer.step()
+sync theta to vLLM
+```
+
 ## Operations Notes
 
 ### vLLM runtime LoRA adapter loading
