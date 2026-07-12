@@ -6,7 +6,7 @@ SCRIBE extends the classic ReAct loop with explicit `Reflect` and `Summarize` ph
 
 One trajectory is a loop,with many turns,and each turn with many steps.We don't need to worry about the number of steps will "burst" in a turn,because we have the sft data to warm up the model,and in rl phase its exploration space will not be too large to make the steps loop crazily in one turn.
 
-Our infra now can collect the rollout data. In threshold mode the loop stops as soon as the submitted answer is correct, or alternatively when the turn reward reaches the pass threshold. Each turn has its own reward, and a trajectory reward is computed from all turns.
+Our infra now can collect the rollout data. In threshold mode the loop stops as soon as the submitted answer is correct, or alternatively when the turn reward reaches the pass threshold. Each turn has its own 16-metric reward; in the n-ary tree rollout each turn is an independent node compared against its siblings (there is no trajectory-level reward).
 
 ## First ：the context engineering of each turn:
 
@@ -712,26 +712,35 @@ the metric is low,that means the block does not repeat itself,otherwise the bloc
 
 **Note：the reflect block is a cot process for model to let the latter turn_summary get higher reward.**
 
-## Third : the reward rule of a trajectory is:
+## Third : the reward used for RL is the per-turn reward (no trajectory aggregation)
 
-trajectory_reward = mean(turn_reward for turn in turns_used) * decay ** len(turns_used)
+In the n-ary tree rollout (see Section Fourth), each turn is an INDEPENDENT node: there is **no trajectory-level reward** and no `mean(turn_reward) * decay^len` aggregation. Each node carries its own 16-metric `turn_reward` (from Section Second), and that scalar is what the sibling-group advantage compares (Section Fourth).
 
-where `turn_reward` is the turn-level reward of each turn (0~1, from the 16 metrics), `len(turns_used)` is the number of turns actually used in this trajectory, and `decay` is a discount factor in (0,1) (e.g. 0.8).
+Why the trajectory reward was removed. A flat rollout groups G full trajectories per task and compares trajectory-level rewards, which (a) is only valid at turn-0 (from turn-1 on, the inputs diverge across trajectories, so "siblings" no longer share a state), and (b) over-propagates a final outcome to every local token - a trajectory that is 80% good but fails at the end fully penalizes its shared correct steps, which is exactly the LLD (Lazy Likelihood Displacement) failure mode. The tree fixes both: every group is n siblings from the SAME parent state (valid at every depth), and each node is credited on its own `turn_reward` (no downstream propagation). Solving-in-fewer-turns is still incentivized: a correct turn (high `turn_reward`) becomes a leaf and stops branching, while a wrong turn (low `turn_reward`) keeps branching - so reaching the answer earlier costs less compute and the node's own reward is high.
 
-We use the **mean** turn reward rather than only the final turn reward so that poor behavior in earlier turns is directly penalized. A trajectory that wastes early turns with malformed or repeated tool calls receives a lower trajectory reward even if the final turn eventually succeeds. The length decay still rewards solving in fewer turns: a 1-turn success gives `mean_reward * decay`, while a 3-turn success gives `mean_reward * decay^3`.
+## Fourth : RL Training and Credit Assignment
 
-## Fourth : RL Training and Credit Assignment:
+We use a **GSPO-token / DAPO hybrid** (no critic), not vanilla GRPO.
 
-we use grpo for different trajectory.
-
-- not reinforce: not stable,variance so large
+- not reinforce: not stable, variance so large
 - not ppo: critic model is expensive
-- but grpo: stable enough,more effective
+- not vanilla GRPO: its per-token importance ratio (1 sample/token cannot do distribution correction) accumulates noise over a sequence, and a trajectory-level reward over-propagates a final outcome to every local token (LLD). Replaced by a step-level ratio + per-node (sibling) advantage.
 
-The reward→credit pipeline (written out explicitly to avoid confusing "reward" with "credit"):
+### Rollout: n-ary tree (siblings = GRPO group)
 
-1. **trajectory_reward** (from Section Third) is the quantity GRPO compares across the group of trajectories sampled on the same task. The GRPO group baseline = mean of trajectory_reward over the group; each trajectory's **advantage** = (its trajectory_reward − group mean) / group std.
-2. **turn-level credit**: the trajectory advantage is shared equally across all turns in that trajectory → each turn's credit = trajectory_advantage / len(turns_used).
+For each task, sample `--branch_n` (default 6) turn-0 attempts from the root - these n siblings share the root input and form ONE GRPO group. A node **passes** (becomes a leaf) when `answer == right_answer` OR `turn_reward >= --reward_threshold` (OR). A non-passing node branches n children with probability `--branch_dropout` (default 0.5; otherwise it is a failure leaf); its n children share the parent's state, so they form a valid GRPO group at the next depth. Depth is capped by `--max_turns`. Cost is self-limiting: as the model improves, more nodes pass early and the tree shrinks.
+
+**Dynamic Sampling (DAPO):** the main loop oversamples `--ds_oversample` x `--batch_size` tasks at turn-0, then keeps only `--batch_size` tasks whose turn-0 group is most MIXED (highest `turn_reward` std). All-pass / all-fail turn-0 groups have ~0 advantage -> zero gradient; filtering them keeps every expanded task's turn-0 group informative.
+
+**State restored for a child node:** the parent's history_manager turns (with their feedback, so `build_input` reconstructs the cross-turn prefix) + the system/kickoff prefix + the agent's env trajectory (kept so metric 14's cumulative malformed-call count stays consistent with a linear trajectory). The env itself is fresh per node (submit-only GSM8K carries no cross-turn state except `right_answer`, fixed from the item).
+
+### Credit: per-node sibling advantage + step-role weighting + DAPO-pure
+
+(written out explicitly to avoid confusing "reward" with "credit"):
+
+1. **node advantage**: each node's 16-metric `turn_reward` is compared within its sibling group (the n children of the same parent). `node_advantage = (turn_reward - sibling_mean) / sibling_std`. NO trajectory-level advantage, NO division by num_turns: each node is an independent short-horizon GRPO problem. (Uniform groups - all-pass/all-fail - give std~0 -> advantage 0 -> zero gradient; Dynamic Sampling filters these at turn-0.)
+
+A turn is expanded into `list[Step]` (one Step per LLM call = one training sample); the step-role weighting below is applied per Step.
 
 A turn may have the data structure:
 input(list[Dict])
@@ -858,13 +867,27 @@ O R S
 
 So in a word,we can get list[Step] from a turn.
 
-3. **Step-level credit**:the turn's credit is shared equally across all steps in that turn → each step's credit = turn_credit / num_steps_in_turn.
+2. **step-level credit (role-weighted, NOT equal-split)**: within a node, the per-token advantage for each step = `node_advantage * step_role_weight`:
+   - **submit step** (last step with a submit tool call) -> 0.35 (carries metric 1, the w1=0.60 dominant term)
+   - **summary step** (last non-tool step with `<reflect>` immediately followed by `<turn_summary>`) -> 0.35 (carries metrics 6-13)
+   - **ordinary steps** (the rest) -> share 0.30 (each 0.30/k; carry the light anti-hacking metrics 14-15)
+   - a MISSING special step's 0.35 is **dropped, not redistributed**: a degenerate turn with no submit/summary gets only the 0.30 ordinary pool, so its (usually negative) advantage spreads thinly and reasoning tokens are not hammered for what is typically a format failure (metric 4 already flags it in turn_reward) - the LLD spirit of "do not penalize correct tokens for the wrong reason".
+3. **token-level credit (DAPO-pure)**: the per-token advantage from step 2 is assigned UNIFORMLY to each rollout token in the step (NOT divided by num_tokens). The loss's masked-mean (`1/sum|o_i|`) is the sole normalization - dividing by n_tokens here would double-normalize (shrink the signal ~1/n_tokens AND cancel the step weighting in the node's total gradient). Rollout tokens = model-generated only (T/O/A/R/S, i.e. Step.output); input/tool_response/system/feedback are masked.
 
-4. **token-level credit**: the step's credit is shared equally across all rollout tokens in that step → each rollout token's credit = step_credit / num_rollout_tokens_in_step. (Rollout tokens = model-generated tokens only: think / output / tool_call / reflect / turn_summary blocks.(Step.output) Input blocks, tool_response, system/kickoff/feedback are masked — not model-generated.)
+So the chain is: **turn_reward -> (sibling group) -> node_advantage -> (x step_role_weight) -> per-token advantage -> (uniform over the step's rollout tokens) -> token advantage**, and the token advantage multiplies the GSPO step-level ratio in the loss.
 
-So the chain is fixed: **trajectory_reward → (GRPO group) → trajectory_advantage → (÷turns) → turn credit → (÷steps) → step credit → (÷rollout tokens) → token credit**, and the token credit is what multiplies ∇log P(token) in the policy gradient.
+### Loss: GSPO step-level ratio + Clip-Higher + (optional) LLDS, no KL
 
-we have TOKEN-LEVEL CREDIT ASSIGNMENT,because the turn_summary has the token reuse ratio.
+`loss = -masked_mean[ min(s_step * A_t, clip(s_step, 1-eps_low, 1+eps_high) * A_t) ] + lambda * L_LLDS`
+
+- **s_step** (GSPO step-level importance ratio) = `exp( (1/|step|) * sum_t log(pi_theta(y_t)/pi_theta_old(y_t)) )` - one scalar per step (length-normalized geometric mean of per-token ratios), clipped at the STEP level. This is a PROPER importance ratio (old = policy at iteration start, NOT frozen SFT), so the clip is a per-iteration trust region, not a cumulative SFT ceiling. `old_logprobs` are precomputed once per iteration (pre-update policy, no extra forward during the update). All tokens in a step share s_step (GSPO's equal token weighting - eliminates GRPO's per-token ratio noise).
+- **Clip-Higher (DAPO)**: `eps_low` (`--clip_epsilon`, 0.2) kept tight, `eps_high` (`--clip_epsilon_high`, 0.4) decoupled and larger so low-probability exploration tokens can actually rise (prevents entropy collapse).
+- **KL removed (DAPO)**: no `beta * KL(pi_theta || pi_ref)` term. A reasoning policy is meant to diverge from the SFT base; a KL anchor to frozen SFT pulls it back and flattens learning. Stability comes from the step-level clip + gradient clipping. (`ref_model` is no longer used in the loss.)
+- **LLDS regularizer** (`--llds_lambda`, default 0=off): `L_LLDS = masked_mean[ 1(s_step<1) * 1(A_t>=0) * max(0, Delta_t) ]` where `Delta_t = log pi_old - log pi_theta > 0` means the token's likelihood dropped. Three layers of selectivity: (a) action-level gate - only when the step's TOTAL likelihood dropped (s_step<1); (b) preserving set - only non-negative-advantage (correct/untrained) steps; (c) token-level - only the tokens that actually dropped. Reuses `old_logprobs` (no extra forward). Prevents LLD (likelihood collapse of correct responses) - the tree already removes LLD's main cause (trajectory over-propagation); LLDS is insurance for the residual OOD-feedback cause.
+
+### Overlong Filtering (DAPO)
+
+A turn truncated by the step limit (`max_steps_per_turn`, likely looping) is flagged `truncated`; its training samples are SKIPPED (loss masked). Its `turn_reward` still shapes its siblings' advantage (so it still counts in the group baseline), but its own (low-quality, cut-off) tokens are not trained on. This replaces the old punitive-truncation reward noise (DAPO: a sound long reasoning should not be penalized just for length). On GSM8K truncation is rare (roughly looping); it matters more in coding/long-generation settings.
 
 ## Operations Notes
 
@@ -920,12 +943,9 @@ optional `--seed` for a reproducible shuffled subset of the train split
 `df.sample(frac=1.0, random_state=seed)`, keeping original indices so task_ids
 stay stable).
 
-### Gradient clipping (KL-spike mitigation)
+### Gradient clipping + step-level clip (stability)
 
-Online GRPO bounds the optimizer step with gradient clipping in `do_grpo_update`
-(`scripts/train_grpo_online_submit_only.py`): after `loss.backward()` and before
-`optimizer.step()`, the L2 norm of all trainable (LoRA) gradients is capped by
-`--max_grad_norm` (default `1.0`; `0` disables):
+The optimizer step is bounded by gradient clipping in `do_scribe_update` (`scripts/train_grpo_online_submit_only.py`): after `loss.backward()` and before `optimizer.step()`, the L2 norm of all trainable (LoRA) gradients is capped by `--max_grad_norm` (default `1.0`; `0` disables):
 
 ```python
 if (n_batches + 1) % args.gradient_accumulation_steps == 0:
@@ -938,48 +958,11 @@ if (n_batches + 1) % args.gradient_accumulation_steps == 0:
     optimizer.zero_grad()
 ```
 
-**Why it was added.** The GRPO KL term uses the Schulman k3 estimator
-`kl = exp(δ) − δ − 1` with `δ = log π_policy − log π_ref`, where `π_ref` is the
-frozen SFT model (see `compute_grpo_loss` in `Scribe/scribe_gym/grpo_loss.py`).
-k3 is exponentially sensitive to positive `δ`: a few extreme-ratio tokens
-detonate the `exp()`, spiking the mean KL so that `β·KL` dominates the loss.
-The optimizer then overcorrects - yanking the policy back toward SFT - and
-accuracy crashes without recovery. This is *not* reward hacking (reward still
-tracks accuracy, `corr(m1, mean_reward) ≈ 0.97`); it is KL-penalty
-overcorrection from a frozen reference paired with an explosive estimator (the
-iter-15 spike).
+**Stability now comes from three layers (no KL, no k3):**
+1. **GSPO step-level clip** (`--clip_epsilon` / `--clip_epsilon_high`): the importance ratio `s_step` is a length-normalized geometric mean over the step's rollout tokens, so a single extreme token cannot detonate it (unlike the old per-token ratio). Clipped at the step level per iteration.
+2. **Gradient clipping** (above): bounds the per-step parameter displacement to `lr * max_grad_norm`, so one pathological gradient cannot fling the policy. (AdamW view: also stops a detonating token's huge gradient from contaminating the moment estimates `m`/`v`.)
+3. **Old-anchored ratio** (not frozen SFT): `s_step = pi_theta / pi_theta_old` where `theta_old` is the policy at iteration start. The clip is a per-iteration trust region (ratio starts at 1 each iter), NOT a cumulative SFT ceiling - so the policy can drift from SFT over many iterations without tokens freezing at the clip bound.
 
-**How it works (no reference model needed).** `clip_grad_norm_` operates only on
-the `.grad` tensors already populated by `loss.backward()` - it never sees the
-reference model. The ref's influence is already baked into the gradient: in the
-forward pass `δ = log π_policy − log π_ref` enters the loss with `π_ref`
-detached, so backprop reaches only the (trainable) LoRA parameters; the frozen
-ref receives no gradients and is absent from the clip list. `clip_grad_norm_`
-just reads the total norm `√Σ‖p.grad‖²` and, if it exceeds `max_grad_norm`,
-rescales every gradient by `max_grad_norm / norm`. Two angles:
+**History (why this replaced the old KL setup).** The earlier setup used a per-token ratio `pi_theta / pi_ref` (ref = frozen SFT) with a k3 KL estimator `kl = exp(delta) - delta - 1` (delta = log pi_policy - log pi_ref). k3's `exp()` detonated on extreme-ratio tokens (the iter-15 kl_max spikes of 205/765/691), and the ref-anchored clip [0.8, 1.2] was a cumulative SFT ceiling that froze learning (the m1 plateau at 0.60). Both are removed: KL is gone, the ratio is old-anchored and step-level. Drift gauges to watch in `metrics_log.jsonl`: `scribe/max_step_ratio` (should stay near 1 each iter) and `scribe/clip_frac`.
 
-- *SGD view:* per-step parameter displacement is bounded by
-  `lr × max_grad_norm`, so one pathological gradient cannot fling the policy
-  off in a single step.
-- *AdamW view (our optimizer):* Adam already self-normalizes each parameter's
-  step to ~`lr`, so clipping's real job here is to stop a detonating token's
-  huge gradient from contaminating the moment estimates `m`/`v`. Without
-  clipping, `v` stays inflated for several steps and freezes the affected
-  directions (the "yanked back, then stuck" non-recovery); with clipping there
-  is no contamination and recovery stays smooth.
-
-**Scope - per-step brake, not cumulative speed limit.** Clipping bounds the
-*per-step* displacement, not cumulative drift. A high LR with healthy gradients
-never trips the clip yet still accumulates large drift over many iterations;
-that is governed by the LR schedule (linear warmup + cosine anneal), not by
-clipping. The two are complementary: clipping is the per-step brake (prevents a
-single detonation), the LR schedule is the cumulative speed limit (prevents
-steady over-drift).
-
-**Drift diagnostics.** `compute_grpo_loss` also reports peak drift alongside the
-mean: `grpo/max_log_ratio` (max `|δ|` over rollout tokens) and `grpo/kl_max`
-(max per-token k3 KL). These are calibration meters for the clipping above -
-they should stay bounded when the clip is active - not a second alarm; the mean
-`grpo/kl` already alarms on detonation. The trainer tracks them as global maxima
-across micro-batches (in `do_grpo_update`), not averages, so a detonation is
-not diluted away.
+`ref_model` is still loaded (deepcopy of the policy at training start) but is NO LONGER used in the loss - it can be dropped to free one model copy of VRAM.
